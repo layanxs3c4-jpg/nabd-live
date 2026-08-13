@@ -1,6 +1,9 @@
 name: Build NABD Live for Windows
 
 on:
+  push:
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
