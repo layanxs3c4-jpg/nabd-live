@@ -57,6 +57,10 @@ jobs:
         working-directory: airi
         run: pnpm run build:packages
 
+      - name: Build the TikFinity engine
+        working-directory: airi
+        run: pnpm -F @proj-airi/airi-plugin-tikfinity build
+
       - name: Run NABD regression tests
         working-directory: airi
         run: pnpm exec vitest run plugins/airi-plugin-tikfinity/test apps/stage-tamagotchi/src/renderer/pages/settings/tikfinity/use-nabd-quick-setup.test.ts packages/stage-ui/src/stores/settings/avatar.test.ts
