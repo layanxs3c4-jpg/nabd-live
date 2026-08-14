@@ -1,0 +1,54 @@
+name: Publish NABD Live Windows installer
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/publish-installer.yml
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  publish:
+    name: Publish direct download
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      ARTIFACT_ID: "9202758392"
+      RELEASE_TAG: v0.11.3-nabd.1
+      GH_TOKEN: ${{ github.token }}
+
+    steps:
+      - name: Download the successful Windows build
+        shell: bash
+        run: |
+          gh api \
+            -H "Accept: application/vnd.github+json" \
+            "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${ARTIFACT_ID}/zip" \
+            > NABD-Live-Windows-x64.zip
+          mkdir release
+          unzip -q NABD-Live-Windows-x64.zip -d release
+
+      - name: Verify the installer
+        shell: bash
+        run: |
+          installer="$(find release -type f -name 'NABD-Live-*-windows-x64-setup.exe' -print -quit)"
+          checksum="$(find release -type f -name 'SHA256SUMS.txt' -print -quit)"
+          test -n "$installer"
+          test -n "$checksum"
+          ls -lh "$installer" "$checksum"
+
+      - name: Publish the direct download
+        shell: bash
+        run: |
+          installer="$(find release -type f -name 'NABD-Live-*-windows-x64-setup.exe' -print -quit)"
+          checksum="$(find release -type f -name 'SHA256SUMS.txt' -print -quit)"
+          gh release create "$RELEASE_TAG" \
+            "$installer" \
+            "$checksum" \
+            --title "NABD Live 0.11.3 for Windows" \
+            --notes "Windows x64 installer for NABD Live with TikFinity, viewer points, quizzes, and audience polls."
