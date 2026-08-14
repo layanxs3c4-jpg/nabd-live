@@ -57,6 +57,14 @@ jobs:
         working-directory: airi
         run: pnpm run build:packages
 
+      - name: Run NABD regression tests
+        working-directory: airi
+        run: pnpm exec vitest run plugins/airi-plugin-tikfinity/test apps/stage-tamagotchi/src/renderer/pages/settings/tikfinity/use-nabd-quick-setup.test.ts packages/stage-ui/src/stores/settings/avatar.test.ts
+
+      - name: Type-check the Windows app
+        working-directory: airi
+        run: pnpm -F @proj-airi/stage-tamagotchi typecheck
+
       - name: Set up .NET
         uses: actions/setup-dotnet@v4
         with:
