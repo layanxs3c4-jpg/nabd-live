@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - main
+    paths:
+      - NABD-Live-github-overlay.zip
   workflow_dispatch:
 
 permissions:

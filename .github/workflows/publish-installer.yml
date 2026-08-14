@@ -48,6 +48,7 @@ jobs:
           installer="$(find release -type f -name 'NABD-Live-*-windows-x64-setup.exe' -print -quit)"
           checksum="$(find release -type f -name 'SHA256SUMS.txt' -print -quit)"
           gh release create "$RELEASE_TAG" \
+            --repo "$GITHUB_REPOSITORY" \
             "$installer" \
             "$checksum" \
             --title "NABD Live 0.11.3 for Windows" \
