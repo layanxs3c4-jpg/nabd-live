@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   windows-x64:
@@ -109,3 +109,19 @@ jobs:
             airi/apps/stage-tamagotchi/dist/SHA256SUMS.txt
           if-no-files-found: error
           retention-days: 7
+
+      - name: Publish the direct Windows download
+        if: github.event_name == 'push'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: v0.11.3-nabd.3
+        run: |
+          $installer = Get-ChildItem airi/apps/stage-tamagotchi/dist/NABD-Live-*-windows-x64-setup.exe | Select-Object -First 1
+          $checksum = Get-Item airi/apps/stage-tamagotchi/dist/SHA256SUMS.txt
+          gh release create $env:RELEASE_TAG `
+            $installer.FullName `
+            $checksum.FullName `
+            --target $env:GITHUB_SHA `
+            --title "NABD Live 0.11.3-nabd.3 for Windows" `
+            --notes "Windows x64 release with independent TikFinity connection, ordered comments and gifts, voice setup, viewer points, quizzes, and polls."
