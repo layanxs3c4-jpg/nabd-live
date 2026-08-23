@@ -7,7 +7,6 @@ on:
     paths:
       - NABD-Live-github-overlay.zip
       - .github/workflows/build-windows.yml
-      - .github/workflows/build-windows.yml
   workflow_dispatch:
 
 permissions:
@@ -20,7 +19,7 @@ jobs:
     timeout-minutes: 90
     env:
       VITE_DISTRIBUTION: nabd
-      RELEASE_TAG: v0.11.3-nabd.2
+      RELEASE_TAG: v0.11.3-nabd.3
 
     steps:
       - name: Check out the NABD builder
@@ -127,7 +126,7 @@ jobs:
             gh release upload $env:RELEASE_TAG $installer.FullName $checksum.FullName --clobber --repo $env:GITHUB_REPOSITORY
           }
           else {
-            gh release create $env:RELEASE_TAG $installer.FullName $checksum.FullName --repo $env:GITHUB_REPOSITORY --title "NABD Live 0.11.3-nabd.2 for Windows" --notes "Windows x64 installer with persistent TikFinity connection, OpenAI chat and voice quick setup, voice preview, and adjustable avatar motion."
+            gh release create $env:RELEASE_TAG $installer.FullName $checksum.FullName --repo $env:GITHUB_REPOSITORY --title "NABD Live 0.11.3-nabd.3 for Windows" --notes "Windows x64 installer with persistent TikFinity connection, OpenAI chat and voice quick setup, voice preview, and adjustable avatar motion."
           }
 
       - name: Publish the direct Windows download
