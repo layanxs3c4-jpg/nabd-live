@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - NABD-Live-github-overlay.zip
+      - .github/workflows/build-windows.yml
   workflow_dispatch:
 
 permissions:
