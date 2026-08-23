@@ -7,6 +7,7 @@ on:
     paths:
       - NABD-Live-github-overlay.zip
       - .github/workflows/build-windows.yml
+      - .github/workflows/build-windows.yml
   workflow_dispatch:
 
 permissions:
@@ -19,6 +20,7 @@ jobs:
     timeout-minutes: 90
     env:
       VITE_DISTRIBUTION: nabd
+      RELEASE_TAG: v0.11.3-nabd.2
 
     steps:
       - name: Check out the NABD builder
@@ -109,7 +111,24 @@ jobs:
             airi/apps/stage-tamagotchi/dist/NABD-Live-*-windows-x64-setup.exe
             airi/apps/stage-tamagotchi/dist/SHA256SUMS.txt
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 30
+
+      - name: Publish the permanent Windows release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $installer = Get-ChildItem airi/apps/stage-tamagotchi/dist/NABD-Live-*-windows-x64-setup.exe | Select-Object -First 1
+          $checksum = Get-Item airi/apps/stage-tamagotchi/dist/SHA256SUMS.txt
+          if (-not $installer) { throw 'NABD Live installer not found.' }
+
+          gh release view $env:RELEASE_TAG --repo $env:GITHUB_REPOSITORY 2>$null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $env:RELEASE_TAG $installer.FullName $checksum.FullName --clobber --repo $env:GITHUB_REPOSITORY
+          }
+          else {
+            gh release create $env:RELEASE_TAG $installer.FullName $checksum.FullName --repo $env:GITHUB_REPOSITORY --title "NABD Live 0.11.3-nabd.2 for Windows" --notes "Windows x64 installer with persistent TikFinity connection, OpenAI chat and voice quick setup, voice preview, and adjustable avatar motion."
+          }
 
       - name: Publish the direct Windows download
         if: github.event_name == 'push'
