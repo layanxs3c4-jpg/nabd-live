@@ -6,7 +6,6 @@ on:
       - main
     paths:
       - NABD-Live-github-overlay.zip
-      - .github/workflows/build-windows.yml
   workflow_dispatch:
 
 permissions:
@@ -128,19 +127,3 @@ jobs:
           else {
             gh release create $env:RELEASE_TAG $installer.FullName $checksum.FullName --repo $env:GITHUB_REPOSITORY --title "NABD Live 0.11.3-nabd.3 for Windows" --notes "Windows x64 installer with persistent TikFinity connection, OpenAI chat and voice quick setup, voice preview, and adjustable avatar motion."
           }
-
-      - name: Publish the direct Windows download
-        if: github.event_name == 'push'
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: v0.11.3-nabd.3
-        run: |
-          $installer = Get-ChildItem airi/apps/stage-tamagotchi/dist/NABD-Live-*-windows-x64-setup.exe | Select-Object -First 1
-          $checksum = Get-Item airi/apps/stage-tamagotchi/dist/SHA256SUMS.txt
-          gh release create $env:RELEASE_TAG `
-            $installer.FullName `
-            $checksum.FullName `
-            --target $env:GITHUB_SHA `
-            --title "NABD Live 0.11.3-nabd.3 for Windows" `
-            --notes "Windows x64 release with independent TikFinity connection, ordered comments and gifts, voice setup, viewer points, quizzes, and polls."
