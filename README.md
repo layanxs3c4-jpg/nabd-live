@@ -25,7 +25,7 @@
 3. اختر **Build NABD Live for Windows**.
 4. اضغط **Run workflow**.
 5. بعد نجاح البناء، نزّل الملف **NABD-Live-Windows-x64** من قسم Artifacts.
-6. فك الضغط، ثم شغّل ملف `NABD-Live-0.11.3-nabd.6-windows-x64-setup.exe`.
+6. فك الضغط، ثم شغّل ملف `NABD-Live-0.11.3-nabd.7-windows-x64-setup.exe`.
 
 ملف الاختبار غير موقع بشهادة تجارية. قد يعرض Windows تحذير SmartScreen باسم
 **Unknown publisher**. التوقيع الرسمي يحتاج شهادة توقيع برامج مستقلة.
