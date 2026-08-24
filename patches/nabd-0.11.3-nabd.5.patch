@@ -25,71 +25,29 @@ index c99719c..b1cac6b 100644
    "description": "LLM powered virtual character",
    "author": {
 diff --git a/apps/stage-tamagotchi/src/renderer/layouts/settings.vue b/apps/stage-tamagotchi/src/renderer/layouts/settings.vue
-new file mode 100644
-index 0000000..87b06ed
---- /dev/null
+index 97fbdd7..87b06ed 100644
+--- a/apps/stage-tamagotchi/src/renderer/layouts/settings.vue
 +++ b/apps/stage-tamagotchi/src/renderer/layouts/settings.vue
-@@ -0,0 +1,127 @@
-+<script setup lang="ts">
-+import { isStageTamagotchi } from '@proj-airi/stage-shared'
-+import { PageHeader } from '@proj-airi/stage-ui/components'
-+import { useProviderStore } from '@proj-airi/stage-ui/stores/providers/provider'
+@@ -2,6 +2,7 @@
+ import { isStageTamagotchi } from '@proj-airi/stage-shared'
+ import { PageHeader } from '@proj-airi/stage-ui/components'
+ import { useProviderStore } from '@proj-airi/stage-ui/stores/providers/provider'
 +import { ErrorBoundary } from '@proj-airi/ui'
-+import { computed, ref } from 'vue'
-+import { useI18n } from 'vue-i18n'
-+import { RouterView, useRoute } from 'vue-router'
-+
-+import WindowTitleBar from '../components/Window/TitleBar.vue'
-+
-+import { useRestoreScroll } from '../composables/use-restore-scroll'
-+
-+const route = useRoute()
-+const { t } = useI18n()
-+const providersStore = useProviderStore()
-+const scrollContainer = ref<HTMLElement>()
-+useRestoreScroll(scrollContainer)
-+
-+const routeMeta = computed(() => route.meta as {
-+  titleKey?: string
-+  subtitleKey?: string
-+  title?: string
-+  subtitle?: string
-+})
-+
-+const providerTitle = computed(() => {
-+  if (!route.path.startsWith('/settings/providers/'))
-+    return undefined
-+
-+  const segments = route.path.split('/').filter(Boolean)
-+  const providerId = segments[3]
-+
-+  if (!providerId)
-+    return undefined
-+
-+  return providersStore.findProviderDefinition(providerId)?.nameLocalize({ t })
-+})
-+
-+const routeHeaderMetadata = computed(() => {
-+  const { titleKey, subtitleKey, title, subtitle } = routeMeta.value
-+  const resolvedTitle = titleKey ? t(titleKey) : title
-+  const resolvedSubtitle = subtitleKey ? t(subtitleKey) : subtitle
-+
-+  if (resolvedTitle || resolvedSubtitle) {
-+    return {
-+      title: resolvedTitle,
-+      subtitle: resolvedSubtitle,
-+    }
-+  }
-+
-+  if (providerTitle.value) {
-+    return {
-+      title: providerTitle.value,
-+      subtitle: t('settings.title'),
-+    }
-+  }
-+
-+  return undefined
-+})
+ import { computed, ref } from 'vue'
+ import { useI18n } from 'vue-i18n'
+ import { RouterView, useRoute } from 'vue-router'
+@@ -36,7 +37,6 @@ const providerTitle = computed(() => {
+   return providersStore.findProviderDefinition(providerId)?.nameLocalize({ t })
+ })
+ 
+-// const activeSettingsTutorial = ref('default')
+ const routeHeaderMetadata = computed(() => {
+   const { titleKey, subtitleKey, title, subtitle } = routeMeta.value
+   const resolvedTitle = titleKey ? t(titleKey) : title
+@@ -58,6 +58,14 @@ const routeHeaderMetadata = computed(() => {
+ 
+   return undefined
+ })
 +
 +function errorText(error: unknown): string {
 +  if (error instanceof Error)
@@ -98,29 +56,22 @@ index 0000000..87b06ed
 +    return error
 +  return 'Unknown settings page error'
 +}
-+</script>
-+
-+<template>
-+  <div h-full w-full bg="$bg-color" flex="~ col">
-+    <WindowTitleBar :title="routeHeaderMetadata?.title ?? ''" icon="i-solar:settings-bold" />
-+    <div
-+      :style="{
-+        paddingTop: `44px`,
-+        paddingBottom: 'env(safe-area-inset-bottom, 0px)',
-+        paddingRight: 'env(safe-area-inset-right, 0px)',
-+        paddingLeft: 'env(safe-area-inset-left, 0px)',
-+      }"
-+      min-h-0 flex-1
-+    >
-+      <div ref="scrollContainer" relative h-full w-full overflow-y-auto scrollbar-none>
-+        <div flex="~ col" mx-auto h-full max-w-screen-xl>
-+          <PageHeader
-+            :title="routeHeaderMetadata?.title ?? ''"
-+            :subtitle="routeHeaderMetadata?.subtitle ?? ''"
-+            :disable-back-button="isStageTamagotchi() && route.path === '/settings'"
-+            px-4
-+          />
-+          <div min-h-0 flex-1 px-4>
+ </script>
+ 
+ <template>
+@@ -70,7 +78,6 @@ const routeHeaderMetadata = computed(() => {
+         paddingRight: 'env(safe-area-inset-right, 0px)',
+         paddingLeft: 'env(safe-area-inset-left, 0px)',
+       }"
+-
+       min-h-0 flex-1
+     >
+       <div ref="scrollContainer" relative h-full w-full overflow-y-auto scrollbar-none>
+@@ -82,7 +89,36 @@ const routeHeaderMetadata = computed(() => {
+             px-4
+           />
+           <div min-h-0 flex-1 px-4>
+-            <RouterView />
 +            <ErrorBoundary title="تعذر تحميل صفحة الإعدادات" retry-label="إعادة المحاولة">
 +              <RouterView />
 +              <template #fallback="{ error, retry }">
@@ -151,12 +102,9 @@ index 0000000..87b06ed
 +                </div>
 +              </template>
 +            </ErrorBoundary>
-+          </div>
-+        </div>
-+      </div>
-+    </div>
-+  </div>
-+</template>
+           </div>
+         </div>
+       </div>
 diff --git a/apps/stage-tamagotchi/src/renderer/pages/settings/tikfinity/index.vue b/apps/stage-tamagotchi/src/renderer/pages/settings/tikfinity/index.vue
 index 4c316c8..a9e4262 100644
 --- a/apps/stage-tamagotchi/src/renderer/pages/settings/tikfinity/index.vue
