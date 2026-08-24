@@ -1,0 +1,209 @@
+diff --git a/NABD-START-HERE-AR.md b/NABD-START-HERE-AR.md
+index 6db873f..3e44a5c 100644
+--- a/NABD-START-HERE-AR.md
++++ b/NABD-START-HERE-AR.md
+@@ -32,7 +32,7 @@
+ 3. اختر **Build NABD Live for Windows**.
+ 4. اضغط **Run workflow**.
+ 5. بعد نجاح البناء، نزّل الملف **NABD-Live-Windows-x64** من قسم Artifacts.
+-6. فك الضغط، ثم شغّل ملف `NABD-Live-0.11.3-nabd.6-windows-x64-setup.exe`.
++6. فك الضغط، ثم شغّل ملف `NABD-Live-0.11.3-nabd.7-windows-x64-setup.exe`.
+ 
+ ملف الاختبار غير موقع بشهادة تجارية. قد يعرض Windows تحذير SmartScreen باسم
+ **Unknown publisher**. التوقيع الرسمي يحتاج شهادة توقيع برامج مستقلة.
+diff --git a/apps/stage-tamagotchi/package.json b/apps/stage-tamagotchi/package.json
+index 1ee8f1c..118220a 100644
+--- a/apps/stage-tamagotchi/package.json
++++ b/apps/stage-tamagotchi/package.json
+@@ -1,7 +1,7 @@
+ {
+   "name": "@proj-airi/stage-tamagotchi",
+   "type": "module",
+-  "version": "0.11.3-nabd.6",
++  "version": "0.11.3-nabd.7",
+   "private": true,
+   "description": "LLM powered virtual character",
+   "author": {
+diff --git a/apps/stage-tamagotchi/src/main/services/nabd/tiktok-live.ts b/apps/stage-tamagotchi/src/main/services/nabd/tiktok-live.ts
+index b90b314..1060064 100644
+--- a/apps/stage-tamagotchi/src/main/services/nabd/tiktok-live.ts
++++ b/apps/stage-tamagotchi/src/main/services/nabd/tiktok-live.ts
+@@ -41,6 +41,52 @@ function numberValue(...values: unknown[]): number {
+   return 0
+ }
+ 
++function messageFromUnknown(error: unknown): string {
++  if (error instanceof Error && error.message.trim())
++    return error.message.trim()
++  if (typeof error === 'string' && error.trim())
++    return error.trim()
++  if (typeof error === 'number' || typeof error === 'bigint' || typeof error === 'boolean')
++    return String(error)
++  if (error && typeof error === 'object') {
++    const record = error as Record<string, unknown>
++    const nested = stringValue(
++      record.message,
++      record.error,
++      record.reason,
++      record.description,
++      record.statusText,
++      record.code,
++      record.statusCode,
++      record.status,
++    )
++    if (nested)
++      return nested
++
++    try {
++      const json = JSON.stringify(record)
++      if (json && json !== '{}')
++        return json
++    }
++    catch {}
++  }
++  return 'تعذر الاتصال ببث TikTok المباشر. تأكد أن اسم المستخدم صحيح وأن الحساب يبث الآن وبثه عام.'
++}
++
++function directTikTokMessage(error: unknown): string {
++  const message = messageFromUnknown(error)
++  const lower = message.toLowerCase()
++
++  if (lower.includes('room') || lower.includes('live') || lower.includes('user_not_found') || lower.includes('not found')) {
++    return `تعذر العثور على بث مباشر لهذا الحساب. تأكد أن الاسم صحيح بدون @ وأن الحساب يبث الآن وبثه عام. التفاصيل: ${message}`
++  }
++  if (lower.includes('403') || lower.includes('forbidden') || lower.includes('signature') || lower.includes('captcha')) {
++    return `TikTok رفض الاتصال المباشر مؤقتًا. جرّب TikFinity Desktop أو أعد المحاولة بعد قليل. التفاصيل: ${message}`
++  }
++
++  return `تعذر الاتصال ببث TikTok المباشر. التفاصيل: ${message}`
++}
++
+ function send(owner: WebContents, channel: string, payload: unknown): void {
+   if (!owner.isDestroyed())
+     owner.send(channel, payload)
+@@ -150,7 +196,7 @@ function bindEvents(connection: DirectConnection, owner: WebContents): void {
+ 
+   connection.on('error', (error) => {
+     if (activeConnection === connection) {
+-      const message = error instanceof Error ? error.message : String(error)
++      const message = directTikTokMessage(error)
+       send(owner, STATUS_CHANNEL, { status: 'error', message })
+     }
+   })
+@@ -196,9 +242,9 @@ export function setupNabdTikTokLive(): void {
+         activeConnection = undefined
+         activeOwner = undefined
+       }
+-      const message = error instanceof Error ? error.message : String(error)
++      const message = directTikTokMessage(error)
+       send(owner, STATUS_CHANNEL, { status: 'error', message })
+-      throw error
++      throw new Error(message)
+     }
+   })
+ 
+diff --git a/apps/stage-tamagotchi/src/renderer/pages/settings/tikfinity/index.vue b/apps/stage-tamagotchi/src/renderer/pages/settings/tikfinity/index.vue
+index 2495f71..c94bb5a 100644
+--- a/apps/stage-tamagotchi/src/renderer/pages/settings/tikfinity/index.vue
++++ b/apps/stage-tamagotchi/src/renderer/pages/settings/tikfinity/index.vue
+@@ -213,7 +213,7 @@ onMounted(() => {
+     <section class="nabd-hero">
+       <div>
+         <p class="nabd-eyebrow">
+-          NABD Live 0.11.3-nabd.6
++          NABD Live 0.11.3-nabd.7
+         </p>
+         <h2>اتصال TikTok LIVE</h2>
+         <p>
+diff --git a/apps/stage-tamagotchi/src/renderer/stores/tikfinity-runtime.ts b/apps/stage-tamagotchi/src/renderer/stores/tikfinity-runtime.ts
+index 0af3e18..8c6fd0b 100644
+--- a/apps/stage-tamagotchi/src/renderer/stores/tikfinity-runtime.ts
++++ b/apps/stage-tamagotchi/src/renderer/stores/tikfinity-runtime.ts
+@@ -75,6 +75,32 @@ function normalizeViewerScores(value: unknown): TikFinityViewerScore[] {
+     })
+ }
+ 
++function messageFromUnknown(error: unknown): string {
++  if (error instanceof Error && error.message.trim())
++    return error.message.trim()
++  if (typeof error === 'string' && error.trim())
++    return error.trim()
++  if (typeof error === 'number' || typeof error === 'bigint' || typeof error === 'boolean')
++    return String(error)
++  if (error && typeof error === 'object') {
++    const record = error as Record<string, unknown>
++    for (const key of ['message', 'error', 'reason', 'description', 'statusText', 'code', 'statusCode', 'status']) {
++      const value = record[key]
++      if (typeof value === 'string' && value.trim())
++        return value.trim()
++      if (typeof value === 'number' || typeof value === 'bigint')
++        return String(value)
++    }
++    try {
++      const json = JSON.stringify(record)
++      if (json && json !== '{}')
++        return json
++    }
++    catch {}
++  }
++  return 'تعذر تنفيذ العملية.'
++}
++
+ /** Keeps the TikFinity connection in the main character window. */
+ export const useTikFinityRuntimeStore = defineStore('nabd-tikfinity-runtime', () => {
+   const serverChannelStore = useModsServerChannelStore()
+@@ -138,11 +164,22 @@ export const useTikFinityRuntimeStore = defineStore('nabd-tikfinity-runtime', ()
+   }
+ 
+   function reportError(error: unknown): void {
+-    errorMessage.value = errorMessageFrom(error) ?? 'TikFinity connection failed.'
++    const message = errorMessageFrom(error)
++    errorMessage.value = typeof message === 'string' && message.trim()
++      ? message.trim()
++      : messageFromUnknown(error)
+     busy.value = false
+     publishState()
+   }
+ 
++  function reportDirectConnectionError(error: unknown): void {
++    enabled.value = false
++    busy.value = false
++    snapshot.value = { ...snapshot.value, status: 'stopped' }
++    delivery.value = { ...delivery.value, status: 'stopped', queuedMessageCount: 0 }
++    reportError(error)
++  }
++
+   function removeDirectListeners(): void {
+     if (directEventListener) {
+       window.electron.ipcRenderer.removeListener('nabd:tiktok-direct:event', directEventListener)
+@@ -190,7 +227,7 @@ export const useTikFinityRuntimeStore = defineStore('nabd-tikfinity-runtime', ()
+           errorMessage.value = state.message
+       }
+       else if (state.status === 'error') {
+-        reportError(new Error(typeof state.message === 'string' ? state.message : 'تعذر الاتصال ببث TikTok المباشر.'))
++        reportDirectConnectionError(new Error(messageFromUnknown(state.message) || 'تعذر الاتصال ببث TikTok المباشر.'))
+         return
+       }
+       publishState()
+@@ -268,7 +305,7 @@ export const useTikFinityRuntimeStore = defineStore('nabd-tikfinity-runtime', ()
+     if (activeSource === 'tiktok-direct') {
+       installDirectListeners(nextPlugin)
+       void nextPlugin.startExternal()
+-      void window.electron.ipcRenderer.invoke('nabd:tiktok-direct:connect', normalizedUsername).catch(reportError)
++      void window.electron.ipcRenderer.invoke('nabd:tiktok-direct:connect', normalizedUsername).catch(reportDirectConnectionError)
+     }
+     else {
+       // The local TikFinity socket starts before the AIRI channel is ready.
+diff --git a/plugins/airi-plugin-tikfinity/package.json b/plugins/airi-plugin-tikfinity/package.json
+index fdc0539..46e78d6 100644
+--- a/plugins/airi-plugin-tikfinity/package.json
++++ b/plugins/airi-plugin-tikfinity/package.json
+@@ -1,7 +1,7 @@
+ {
+   "name": "@proj-airi/airi-plugin-tikfinity",
+   "type": "module",
+-  "version": "0.11.3-nabd.6",
++  "version": "0.11.3-nabd.7",
+   "private": true,
+   "description": "TikFinity live event bridge for AIRI",
+   "exports": {
