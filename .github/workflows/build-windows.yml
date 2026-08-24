@@ -38,8 +38,11 @@ jobs:
       - name: Add NABD Live to AIRI
         shell: pwsh
         run: |
+          $patch = '../nabd/patches/nabd-0.11.3-nabd.5.patch'
+          if (-not (Test-Path $patch)) { throw "NABD patch not found: $patch" }
           Expand-Archive nabd/NABD-Live-github-overlay.zip -DestinationPath airi -Force
-          git -C airi apply ../nabd/patches/nabd-0.11.3-nabd.5.patch
+          git -C airi config core.autocrlf false
+          git -C airi apply --ignore-space-change --ignore-whitespace --whitespace=nowarn $patch
 
       - name: Set up pnpm
         uses: pnpm/action-setup@v4
