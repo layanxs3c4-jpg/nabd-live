@@ -20,7 +20,7 @@ jobs:
     timeout-minutes: 90
     env:
       VITE_DISTRIBUTION: nabd
-      RELEASE_TAG: v0.11.3-nabd.5
+      RELEASE_TAG: v0.11.3-nabd.6
 
     steps:
       - name: Check out the NABD builder
@@ -38,7 +38,7 @@ jobs:
       - name: Add NABD Live to AIRI
         shell: pwsh
         run: |
-          $patch = Join-Path $env:GITHUB_WORKSPACE 'nabd/patches/nabd-0.11.3-nabd.5.patch'
+          $patch = Join-Path $env:GITHUB_WORKSPACE 'nabd/patches/nabd-0.11.3-nabd.6.patch'
           if (-not (Test-Path $patch)) { throw "NABD patch not found: $patch" }
           Expand-Archive nabd/NABD-Live-github-overlay.zip -DestinationPath airi -Force
           git -C airi config core.autocrlf false
@@ -132,5 +132,5 @@ jobs:
             gh release upload $env:RELEASE_TAG $installer.FullName $checksum.FullName --clobber --repo $env:GITHUB_REPOSITORY
           }
           else {
-            gh release create $env:RELEASE_TAG $installer.FullName $checksum.FullName --repo $env:GITHUB_REPOSITORY --title "NABD Live 0.11.3-nabd.5 for Windows" --notes "Windows x64 installer with TikFinity and direct TikTok LIVE sources, existing in-app chat and speech providers, fastest-answer quizzes, polls, viewer points, adjustable avatar motion, and a fix for the blank TikTok/TikFinity settings page."
+            gh release create $env:RELEASE_TAG $installer.FullName $checksum.FullName --repo $env:GITHUB_REPOSITORY --title "NABD Live 0.11.3-nabd.6 for Windows" --notes "Windows x64 installer with a simplified TikTok/TikFinity settings page that is visible even on failing configurations, TikFinity and direct TikTok LIVE sources, existing in-app chat and speech providers, fastest-answer quizzes, polls, and viewer points."
           }

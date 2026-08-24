@@ -1,0 +1,1390 @@
+diff --git a/NABD-START-HERE-AR.md b/NABD-START-HERE-AR.md
+index 6081473..6db873f 100644
+--- a/NABD-START-HERE-AR.md
++++ b/NABD-START-HERE-AR.md
+@@ -32,7 +32,7 @@
+ 3. اختر **Build NABD Live for Windows**.
+ 4. اضغط **Run workflow**.
+ 5. بعد نجاح البناء، نزّل الملف **NABD-Live-Windows-x64** من قسم Artifacts.
+-6. فك الضغط، ثم شغّل ملف `NABD-Live-0.11.3-nabd.4-windows-x64-setup.exe`.
++6. فك الضغط، ثم شغّل ملف `NABD-Live-0.11.3-nabd.6-windows-x64-setup.exe`.
+ 
+ ملف الاختبار غير موقع بشهادة تجارية. قد يعرض Windows تحذير SmartScreen باسم
+ **Unknown publisher**. التوقيع الرسمي يحتاج شهادة توقيع برامج مستقلة.
+diff --git a/apps/stage-tamagotchi/package.json b/apps/stage-tamagotchi/package.json
+index c99719c..1ee8f1c 100644
+--- a/apps/stage-tamagotchi/package.json
++++ b/apps/stage-tamagotchi/package.json
+@@ -1,7 +1,7 @@
+ {
+   "name": "@proj-airi/stage-tamagotchi",
+   "type": "module",
+-  "version": "0.11.3-nabd.4",
++  "version": "0.11.3-nabd.6",
+   "private": true,
+   "description": "LLM powered virtual character",
+   "author": {
+diff --git a/apps/stage-tamagotchi/src/renderer/pages/settings/tikfinity/index.vue b/apps/stage-tamagotchi/src/renderer/pages/settings/tikfinity/index.vue
+index 4c316c8..2495f71 100644
+--- a/apps/stage-tamagotchi/src/renderer/pages/settings/tikfinity/index.vue
++++ b/apps/stage-tamagotchi/src/renderer/pages/settings/tikfinity/index.vue
+@@ -1,20 +1,28 @@
+ <script setup lang="ts">
+-import type { TikFinityEvent } from '@proj-airi/airi-plugin-tikfinity'
+-
+-import { useModsServerChannelStore } from '@proj-airi/stage-ui/stores/mods/api/channel-server'
+-import { useSettingsAvatar } from '@proj-airi/stage-ui/stores/settings'
+-import { Button, Callout, FieldCheckbox, FieldInput, FieldRange, IconButton } from '@proj-airi/ui'
+-import { useClipboard } from '@vueuse/core'
+ import { storeToRefs } from 'pinia'
+-import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
+-import { useI18n } from 'vue-i18n'
++import { computed, onMounted, ref } from 'vue'
+ 
+ import { useTikFinityRuntimeStore } from '../../../stores/tikfinity-runtime'
+-import { useNabdQuickSetup } from './use-nabd-quick-setup'
+ 
+-const { t } = useI18n()
+-const serverChannelStore = useModsServerChannelStore()
+-const { connected: airiConnected } = storeToRefs(serverChannelStore)
++type TikTokSource = 'tikfinity' | 'tiktok-direct'
++
++interface DisplayEvent {
++  coins?: number
++  eventId?: string
++  giftName?: string
++  likeCount?: number
++  months?: number
++  receivedAt?: number
++  repeatCount?: number
++  text?: string
++  type: string
++  user?: {
++    displayName?: string
++    id?: string
++    username?: string
++  }
++}
++
+ const runtimeStore = useTikFinityRuntimeStore()
+ const {
+   endpoint,
+@@ -25,80 +33,85 @@ const {
+   delivery,
+   events,
+   records,
+-  engagement: engagementSnapshot,
+-  errorMessage: runtimeErrorMessage,
++  engagement,
++  errorMessage,
+   busy,
+   quizReward,
+ } = storeToRefs(runtimeStore)
+-const {
+-  testingVoice,
+-  errorMessage: setupErrorMessage,
+-  readiness,
+-  speechEnabled,
+-  initialize: initializeQuickSetup,
+-  generateVoicePreview,
+-} = useNabdQuickSetup()
+-const { motionSpeed } = storeToRefs(useSettingsAvatar())
+ 
+ const quizQuestion = ref('')
+ const quizAnswers = ref('')
+ const pollQuestion = ref('')
+ const pollOptions = ref('')
+-const audioUrl = ref('')
+-const audioPlayer = ref<HTMLAudioElement>()
+ 
+ const isActive = computed(() => !['idle', 'stopped'].includes(snapshot.value.status))
+ const canRunGames = computed(() => ['socket-open', 'verified'].includes(snapshot.value.status))
+ const latestRaw = computed(() => records.value[0]?.raw ?? '')
+-const { copied, copy, isSupported: clipboardSupported } = useClipboard({ source: latestRaw, legacy: true })
+-const errorMessage = computed(() => setupErrorMessage.value || runtimeErrorMessage.value)
+-
+-const statusLabel = computed(() => t(`settings.pages.tikfinity.status.${snapshot.value.status}`))
+-const statusClasses = computed(() => {
+-  if (snapshot.value.status === 'verified') {
+-    return ['bg-green-500/12', 'text-green-700', 'dark:text-green-300']
+-  }
+-  if (snapshot.value.status === 'socket-open') {
+-    return ['bg-amber-500/12', 'text-amber-700', 'dark:text-amber-300']
++const viewerScores = computed(() => Array.isArray(engagement.value.scores) ? engagement.value.scores : [])
++const quiz = computed(() => engagement.value.quiz)
++const winner = computed(() => engagement.value.winner)
++const poll = computed(() => engagement.value.poll)
++const pollResult = computed(() => engagement.value.pollResult)
++
++const statusText = computed(() => {
++  switch (snapshot.value.status) {
++    case 'connecting':
++      return 'جارٍ الاتصال'
++    case 'socket-open':
++      return 'الاتصال مفتوح وينتظر أول حدث'
++    case 'verified':
++      return 'تم التحقق بحدث من البث'
++    case 'reconnecting':
++      return 'جارٍ إعادة الاتصال'
++    case 'stopped':
++      return 'متوقف'
++    default:
++      return 'غير متصل'
+   }
+-  return ['bg-neutral-500/10', 'text-neutral-600', 'dark:text-neutral-300']
+ })
+ 
+-function eventTitle(event: TikFinityEvent): string {
+-  return t(`settings.pages.tikfinity.events.${event.type}`)
+-}
++const deliveryText = computed(() => {
++  if (delivery.value.status === 'ready')
++    return 'قناة الرد جاهزة'
++  if (delivery.value.status === 'stopped')
++    return 'قناة الرد متوقفة'
++  return 'قناة الرد قيد التجهيز'
++})
+ 
+-function eventDescription(event: TikFinityEvent): string {
+-  switch (event.type) {
+-    case 'comment':
+-      return event.text
+-    case 'gift':
+-      return `${event.giftName} ×${event.repeatCount} · ${event.coins}`
+-    case 'like':
+-      return String(event.likeCount)
+-    case 'subscribe':
+-      return event.months ? String(event.months) : ''
+-    default:
+-      return ''
+-  }
+-}
++const statusClass = computed(() => {
++  if (snapshot.value.status === 'verified')
++    return 'nabd-status nabd-status-ok'
++  if (snapshot.value.status === 'socket-open' || snapshot.value.status === 'connecting' || snapshot.value.status === 'reconnecting')
++    return 'nabd-status nabd-status-wait'
++  return 'nabd-status'
++})
+ 
+-function clearActivity(): void {
+-  runtimeStore.clearActivity()
++function setSource(nextSource: TikTokSource): void {
++  if (isActive.value)
++    return
++  source.value = nextSource
++  errorMessage.value = ''
+ }
+ 
+ function connect(): void {
+   if (source.value === 'tikfinity') {
+     const normalizedEndpoint = endpoint.value.trim()
+     if (!/^wss?:\/\//i.test(normalizedEndpoint)) {
+-      runtimeErrorMessage.value = t('settings.pages.tikfinity.error.endpoint')
++      errorMessage.value = 'أدخل عنوان TikFinity WebSocket يبدأ بـ ws:// أو wss://.'
+       return
+     }
++    endpoint.value = normalizedEndpoint.endsWith('/') ? normalizedEndpoint : `${normalizedEndpoint}/`
+   }
+-  else if (!tiktokUsername.value.trim()) {
+-    runtimeErrorMessage.value = t('settings.pages.tikfinity.error.username')
+-    return
++  else {
++    const username = tiktokUsername.value.trim().replace(/^@/, '')
++    if (!username) {
++      errorMessage.value = 'أدخل اسم مستخدم حساب TikTok الذي يبث الآن.'
++      return
++    }
++    tiktokUsername.value = username
+   }
++
++  errorMessage.value = ''
+   runtimeStore.connect()
+ }
+ 
+@@ -106,563 +119,339 @@ function disconnect(): void {
+   runtimeStore.disconnect()
+ }
+ 
++function clearActivity(): void {
++  runtimeStore.clearActivity()
++}
++
++function clearScores(): void {
++  runtimeStore.clearScores()
++}
++
+ function startQuiz(): void {
+   const answers = quizAnswers.value
+     .split(/[،,\n]/)
+     .map(answer => answer.trim())
+     .filter(Boolean)
++
+   if (!canRunGames.value || !quizQuestion.value.trim() || answers.length === 0) {
+-    runtimeErrorMessage.value = t('settings.pages.tikfinity.error.quiz')
++    errorMessage.value = 'ابدأ الاتصال أولًا، ثم اكتب السؤال وإجابة واحدة على الأقل.'
+     return
+   }
+ 
+-  runtimeErrorMessage.value = ''
+-  runtimeStore.startQuiz(quizQuestion.value, answers, quizReward.value)
++  errorMessage.value = ''
++  runtimeStore.startQuiz(quizQuestion.value.trim(), answers, Number(quizReward.value) || 50)
+ }
+ 
+ function cancelQuiz(): void {
+   runtimeStore.cancelQuiz()
+ }
+ 
+-function clearScores(): void {
+-  runtimeStore.clearScores()
+-}
+-
+ function startPoll(): void {
+   const options = pollOptions.value
+     .split(/[،,\n]/)
+     .map(option => option.trim())
+     .filter(Boolean)
++
+   if (!canRunGames.value || !pollQuestion.value.trim() || options.length < 2) {
+-    runtimeErrorMessage.value = t('settings.pages.tikfinity.error.poll')
++    errorMessage.value = 'ابدأ الاتصال أولًا، ثم اكتب سؤال التصويت وخيارين على الأقل.'
+     return
+   }
+ 
+-  runtimeErrorMessage.value = ''
+-  runtimeStore.startPoll(pollQuestion.value, options)
++  errorMessage.value = ''
++  runtimeStore.startPoll(pollQuestion.value.trim(), options)
+ }
+ 
+ function stopPoll(): void {
+   runtimeStore.stopPoll()
+ }
+ 
+-async function testVoice(): Promise<void> {
+-  const audio = await generateVoicePreview()
+-  if (!audio)
+-    return
++function eventTitle(event: DisplayEvent): string {
++  switch (event.type) {
++    case 'comment':
++      return 'تعليق'
++    case 'gift':
++      return 'هدية'
++    case 'follow':
++      return 'متابعة'
++    case 'subscribe':
++      return 'اشتراك'
++    case 'share':
++      return 'مشاركة'
++    case 'like':
++      return 'إعجاب'
++    default:
++      return event.type
++  }
++}
++
++function eventDescription(event: DisplayEvent): string {
++  switch (event.type) {
++    case 'comment':
++      return event.text ?? ''
++    case 'gift':
++      return `${event.giftName ?? 'هدية'} x${event.repeatCount ?? 1} - ${event.coins ?? 0} عملة`
++    case 'like':
++      return String(event.likeCount ?? '')
++    case 'subscribe':
++      return event.months ? `${event.months} شهر` : ''
++    default:
++      return ''
++  }
++}
+ 
+-  if (audioUrl.value)
+-    URL.revokeObjectURL(audioUrl.value)
+-  audioUrl.value = URL.createObjectURL(new Blob([audio], { type: 'audio/mpeg' }))
+-  await nextTick()
+-  await audioPlayer.value?.play().catch(() => undefined)
++function viewerName(event: DisplayEvent): string {
++  return event.user?.displayName || event.user?.username || 'مشاهد'
+ }
+ 
+ onMounted(() => {
+   runtimeStore.initializeClient()
+-  initializeQuickSetup()
+-})
+-
+-onUnmounted(() => {
+-  if (audioUrl.value)
+-    URL.revokeObjectURL(audioUrl.value)
+ })
+ </script>
+ 
+ <template>
+-  <div :class="['flex', 'flex-col', 'gap-4', 'pb-12']">
+-    <Callout theme="orange" :label="t('settings.pages.tikfinity.notice.title')">
+-      {{ t('settings.pages.tikfinity.notice.description') }}
+-    </Callout>
+-
+-    <Callout v-if="errorMessage" theme="orange" :label="t('settings.pages.tikfinity.quickSetup.errorTitle')">
+-      {{ errorMessage }}
+-    </Callout>
+-
+-    <section
+-      dir="rtl"
+-      :class="[
+-        'grid gap-5 rounded-2xl p-5',
+-        'border border-primary-300/60 dark:border-primary-700/60',
+-        'bg-primary-50/70 dark:bg-primary-950/20',
+-      ]"
+-    >
++  <div class="nabd-page" dir="rtl">
++    <section class="nabd-hero">
+       <div>
+-        <h2 :class="['text-lg font-bold text-neutral-900', 'dark:text-neutral-100']">
+-          {{ t('settings.pages.tikfinity.quickSetup.title') }}
+-        </h2>
+-        <p :class="['mt-1 text-sm text-neutral-600', 'dark:text-neutral-300']">
+-          {{ t('settings.pages.tikfinity.quickSetup.description') }}
++        <p class="nabd-eyebrow">
++          NABD Live 0.11.3-nabd.6
++        </p>
++        <h2>اتصال TikTok LIVE</h2>
++        <p>
++          هذه صفحة اتصال مبسطة وثابتة. اختر TikFinity Desktop أو TikTok مباشر، ثم ابدأ الاتصال بالبث الحقيقي.
+         </p>
+       </div>
+-
+-      <div :class="['grid grid-cols-2 gap-2', 'lg:grid-cols-4']">
+-        <div
+-          v-for="gate in [
+-            { ready: readiness.chatReady, label: t('settings.pages.tikfinity.quickSetup.gates.chat') },
+-            { ready: readiness.speechReady, label: t('settings.pages.tikfinity.quickSetup.gates.speech') },
+-            { ready: readiness.speechEnabled, label: t('settings.pages.tikfinity.quickSetup.gates.output') },
+-            { ready: snapshot.status === 'verified', label: t('settings.pages.tikfinity.quickSetup.gates.source') },
+-          ]"
+-          :key="gate.label"
+-          :class="[
+-            'flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold',
+-            gate.ready
+-              ? 'bg-green-500/12 text-green-700 dark:text-green-300'
+-              : 'bg-amber-500/12 text-amber-700 dark:text-amber-300',
+-          ]"
+-        >
+-          <span :class="[gate.ready ? 'i-solar:check-circle-bold-duotone' : 'i-solar:danger-circle-bold-duotone', 'text-lg']" />
+-          <span>{{ gate.label }}</span>
+-        </div>
++      <div :class="statusClass">
++        {{ statusText }}
+       </div>
++    </section>
+ 
+-      <div :class="['grid gap-4', 'lg:grid-cols-[minmax(0,1fr)_minmax(16rem,0.55fr)]']">
+-        <div :class="['flex flex-col gap-3']">
+-          <FieldCheckbox
+-            v-model="speechEnabled"
+-            :label="t('settings.pages.tikfinity.quickSetup.output.label')"
+-            :description="t('settings.pages.tikfinity.quickSetup.output.description')"
+-          />
+-          <div :class="['flex flex-wrap gap-2']">
+-            <Button
+-              color="primary"
+-              variant="primary"
+-              icon="i-solar:volume-loud-bold-duotone"
+-              :label="t('settings.pages.tikfinity.quickSetup.actions.testVoice')"
+-              :loading="testingVoice"
+-              :disabled="testingVoice || !readiness.speechReady"
+-              @click="testVoice"
+-            />
+-          </div>
+-          <audio v-if="audioUrl" ref="audioPlayer" :src="audioUrl" controls :class="['w-full']" />
+-        </div>
++    <section v-if="errorMessage" class="nabd-alert">
++      <strong>تنبيه</strong>
++      <span>{{ errorMessage }}</span>
++    </section>
+ 
+-        <div
+-          :class="[
+-            'rounded-xl p-4',
+-            'bg-white/75 dark:bg-neutral-950/50',
+-          ]"
+-        >
+-          <FieldRange
+-            v-model="motionSpeed"
+-            :label="t('settings.pages.tikfinity.quickSetup.motion.label')"
+-            :description="t('settings.pages.tikfinity.quickSetup.motion.description')"
+-            :min="0.25"
+-            :max="1.25"
+-            :step="0.05"
+-            :format-value="value => `${Math.round(value * 100)}%`"
+-          />
+-          <p :class="['mt-3 text-xs text-neutral-500', 'dark:text-neutral-400']">
+-            {{ t('settings.pages.tikfinity.quickSetup.motion.hint') }}
+-          </p>
+-        </div>
++    <section class="nabd-panel">
++      <div class="nabd-panel-title">
++        <h3>مصدر أحداث البث</h3>
++        <span>{{ deliveryText }}</span>
+       </div>
+-    </section>
+ 
+-    <section
+-      :class="[
+-        'grid gap-4 rounded-2xl p-4',
+-        'border border-neutral-200/70 dark:border-neutral-800',
+-        'bg-white/70 dark:bg-neutral-950/60',
+-        'lg:grid-cols-[minmax(0,1fr)_auto]',
+-      ]"
+-    >
+-      <div :class="['flex', 'flex-col', 'gap-4']">
+-        <div :class="['grid grid-cols-2 gap-2']">
+-          <Button
+-            color="primary"
+-            :variant="source === 'tikfinity' ? 'primary' : 'secondary'"
+-            icon="i-solar:monitor-smartphone-bold-duotone"
+-            :label="t('settings.pages.tikfinity.source.tikfinity')"
+-            :disabled="isActive"
+-            @click="source = 'tikfinity'"
+-          />
+-          <Button
+-            color="primary"
+-            :variant="source === 'tiktok-direct' ? 'primary' : 'secondary'"
+-            icon="i-simple-icons:tiktok"
+-            :label="t('settings.pages.tikfinity.source.direct')"
+-            :disabled="isActive"
+-            @click="source = 'tiktok-direct'"
+-          />
+-        </div>
+-        <FieldInput
+-          v-if="source === 'tikfinity'"
+-          v-model="endpoint"
+-          :label="t('settings.pages.tikfinity.endpoint.label')"
+-          :description="t('settings.pages.tikfinity.endpoint.description')"
+-          :placeholder="t('settings.pages.tikfinity.endpoint.placeholder')"
+-          input-class="font-mono"
+-        />
+-        <FieldInput
+-          v-else
+-          v-model="tiktokUsername"
+-          :label="t('settings.pages.tikfinity.username.label')"
+-          :description="t('settings.pages.tikfinity.username.description')"
+-          :placeholder="t('settings.pages.tikfinity.username.placeholder')"
+-          input-class="font-mono"
+-        />
+-        <FieldCheckbox
+-          v-model="includeLikes"
+-          :label="t('settings.pages.tikfinity.options.includeLikes.label')"
+-          :description="t('settings.pages.tikfinity.options.includeLikes.description')"
++      <div class="nabd-source-tabs">
++        <button
++          type="button"
++          :class="{ active: source === 'tikfinity' }"
+           :disabled="isActive"
+-        />
++          @click="setSource('tikfinity')"
++        >
++          TikFinity Desktop
++        </button>
++        <button
++          type="button"
++          :class="{ active: source === 'tiktok-direct' }"
++          :disabled="isActive"
++          @click="setSource('tiktok-direct')"
++        >
++          TikTok مباشر
++        </button>
+       </div>
+ 
+-      <div :class="['flex items-end gap-2', 'lg:min-w-44 lg:flex-col lg:justify-end']">
+-        <Button
+-          v-if="!isActive"
+-          color="primary"
+-          variant="primary"
+-          icon="i-solar:link-circle-bold-duotone"
+-          :label="t('settings.pages.tikfinity.actions.connect')"
+-          :loading="busy"
+-          :disabled="busy"
+-          block
+-          @click="connect"
+-        />
+-        <Button
+-          v-else
+-          color="red"
+-          variant="secondary"
+-          icon="i-solar:stop-circle-bold-duotone"
+-          :label="t('settings.pages.tikfinity.actions.disconnect')"
+-          block
+-          @click="disconnect"
+-        />
++      <label v-if="source === 'tikfinity'" class="nabd-field">
++        <span>عنوان WebSocket في TikFinity</span>
++        <small>اترك TikFinity مفتوحًا واستخدم غالبًا هذا العنوان في Windows.</small>
++        <input v-model="endpoint" dir="ltr" placeholder="ws://127.0.0.1:21213/" :disabled="isActive">
++      </label>
++
++      <label v-else class="nabd-field">
++        <span>اسم مستخدم صاحب البث</span>
++        <small>اكتب اسم الحساب الذي يبث الآن بدون @ وبدون رابط.</small>
++        <input v-model="tiktokUsername" dir="ltr" placeholder="username" :disabled="isActive">
++      </label>
++
++      <label class="nabd-check">
++        <input v-model="includeLikes" type="checkbox" :disabled="isActive">
++        <span>إرسال أحداث الإعجاب للشخصية. الأفضل تركها مقفلة إذا كان البث سريعًا.</span>
++      </label>
++
++      <div class="nabd-actions">
++        <button v-if="!isActive" type="button" class="primary" :disabled="busy" @click="connect">
++          {{ busy ? 'جارٍ الاتصال...' : 'اتصال' }}
++        </button>
++        <button v-else type="button" class="danger" @click="disconnect">
++          قطع الاتصال
++        </button>
+       </div>
+     </section>
+ 
+-    <section
+-      :class="[
+-        'grid gap-3 rounded-2xl p-4',
+-        'border border-neutral-200/70 dark:border-neutral-800',
+-        'bg-white/70 dark:bg-neutral-950/60',
+-      ]"
+-    >
+-      <div :class="['flex flex-wrap items-center justify-between gap-3']">
+-        <div>
+-          <h2 :class="['text-base font-semibold text-neutral-900', 'dark:text-neutral-100']">
+-            {{ t('settings.pages.tikfinity.status.title') }}
+-          </h2>
+-          <p :class="['text-xs text-neutral-500', 'dark:text-neutral-400']">
+-            {{ airiConnected && delivery.status === 'ready' ? t('settings.pages.tikfinity.status.airi-ready') : t('settings.pages.tikfinity.status.airi-waiting') }}
+-          </p>
+-        </div>
+-        <span
+-          :class="[
+-            'rounded-full px-3 py-1 text-xs font-semibold',
+-            ...statusClasses,
+-          ]"
+-          aria-live="polite"
+-        >
+-          {{ statusLabel }}
+-        </span>
++    <section class="nabd-panel">
++      <div class="nabd-panel-title">
++        <h3>حالة الاتصال</h3>
++        <span>{{ statusText }}</span>
+       </div>
+ 
+-      <div :class="['grid grid-cols-2 gap-3', 'lg:grid-cols-5']">
+-        <div
+-          v-for="counter in [
+-            { label: t('settings.pages.tikfinity.counters.raw'), value: snapshot.rawMessageCount },
+-            { label: t('settings.pages.tikfinity.counters.events'), value: snapshot.eventCount },
+-            { label: t('settings.pages.tikfinity.counters.unknown'), value: snapshot.unknownMessageCount },
+-            { label: t('settings.pages.tikfinity.counters.queued'), value: delivery.queuedMessageCount },
+-            { label: t('settings.pages.tikfinity.counters.sent'), value: delivery.sentMessageCount },
+-          ]"
+-          :key="counter.label"
+-          :class="[
+-            'rounded-xl p-3',
+-            'bg-neutral-100/70 dark:bg-neutral-900/80',
+-          ]"
+-        >
+-          <div :class="['text-xs text-neutral-500', 'dark:text-neutral-400']">
+-            {{ counter.label }}
+-          </div>
+-          <div :class="['mt-1 text-2xl font-semibold tabular-nums']">
+-            {{ counter.value }}
+-          </div>
++      <div class="nabd-counters">
++        <div>
++          <span>رسائل خام</span>
++          <strong>{{ snapshot.rawMessageCount }}</strong>
++        </div>
++        <div>
++          <span>أحداث مدعومة</span>
++          <strong>{{ snapshot.eventCount }}</strong>
++        </div>
++        <div>
++          <span>غير معروفة</span>
++          <strong>{{ snapshot.unknownMessageCount }}</strong>
++        </div>
++        <div>
++          <span>في الطابور</span>
++          <strong>{{ delivery.queuedMessageCount }}</strong>
++        </div>
++        <div>
++          <span>أُرسلت للشخصية</span>
++          <strong>{{ delivery.sentMessageCount }}</strong>
+         </div>
+       </div>
+-
+-      <Callout
+-        v-if="delivery.droppedMessageCount > 0"
+-        theme="orange"
+-        :label="t('settings.pages.tikfinity.delivery.droppedTitle')"
+-      >
+-        {{ t('settings.pages.tikfinity.delivery.droppedDescription', { count: delivery.droppedMessageCount }) }}
+-      </Callout>
+     </section>
+ 
+-    <div :class="['grid gap-4', 'lg:grid-cols-2']">
+-      <section
+-        :class="[
+-          'min-h-64 rounded-2xl p-4',
+-          'border border-neutral-200/70 dark:border-neutral-800',
+-          'bg-white/70 dark:bg-neutral-950/60',
+-        ]"
+-      >
+-        <div :class="['mb-3 flex items-center justify-between gap-3']">
+-          <h2 :class="['text-base font-semibold']">
+-            {{ t('settings.pages.tikfinity.activity.title') }}
+-          </h2>
+-          <IconButton
+-            icon="i-solar:trash-bin-trash-bold-duotone"
+-            :aria-label="t('settings.pages.tikfinity.actions.clear')"
+-            :title="t('settings.pages.tikfinity.actions.clear')"
+-            :disabled="events.length === 0 && records.length === 0"
+-            @click="clearActivity"
+-          />
++    <div class="nabd-grid">
++      <section class="nabd-panel">
++        <div class="nabd-panel-title">
++          <h3>نشاط البث</h3>
++          <button type="button" class="ghost" :disabled="events.length === 0 && records.length === 0" @click="clearActivity">
++            مسح
++          </button>
+         </div>
+ 
+-        <div v-if="events.length" :class="['flex flex-col gap-2']">
+-          <div
++        <div v-if="events.length" class="nabd-list">
++          <article
+             v-for="event in events"
+-            :key="event.eventId ?? `${event.receivedAt}-${event.type}-${event.user.id}`"
+-            :class="[
+-              'rounded-xl px-3 py-2',
+-              'bg-neutral-100/70 dark:bg-neutral-900/80',
+-            ]"
++            :key="event.eventId ?? `${event.receivedAt}-${event.type}-${event.user?.id ?? 'viewer'}`"
++            class="nabd-event"
+           >
+-            <div :class="['flex items-center justify-between gap-3']">
+-              <strong :class="['truncate text-sm']">{{ event.user.displayName }}</strong>
+-              <span :class="['text-xs text-primary-600', 'dark:text-primary-300']">{{ eventTitle(event) }}</span>
++            <div>
++              <strong>{{ viewerName(event) }}</strong>
++              <span>{{ eventTitle(event) }}</span>
+             </div>
+-            <p v-if="eventDescription(event)" :class="['mt-1 break-words text-sm text-neutral-600', 'dark:text-neutral-300']">
++            <p v-if="eventDescription(event)">
+               {{ eventDescription(event) }}
+             </p>
+-          </div>
++          </article>
+         </div>
+-        <p v-else :class="['py-12 text-center text-sm text-neutral-500', 'dark:text-neutral-400']">
+-          {{ t('settings.pages.tikfinity.activity.empty') }}
++
++        <p v-else class="nabd-empty">
++          لم يصل حدث من TikTok LIVE بعد. بعد أول تعليق أو هدية تتحول الحالة إلى "تم التحقق".
+         </p>
+       </section>
+ 
+-      <section
+-        :class="[
+-          'min-h-64 rounded-2xl p-4',
+-          'border border-neutral-200/70 dark:border-neutral-800',
+-          'bg-white/70 dark:bg-neutral-950/60',
+-        ]"
+-      >
+-        <div :class="['mb-3 flex items-center justify-between gap-3']">
+-          <h2 :class="['text-base font-semibold']">
+-            {{ t('settings.pages.tikfinity.activity.rawTitle') }}
+-          </h2>
+-          <IconButton
+-            :icon="copied ? 'i-solar:check-circle-bold-duotone' : 'i-solar:copy-line-duotone'"
+-            :aria-label="copied ? t('settings.pages.tikfinity.actions.copiedRaw') : t('settings.pages.tikfinity.actions.copyRaw')"
+-            :title="copied ? t('settings.pages.tikfinity.actions.copiedRaw') : t('settings.pages.tikfinity.actions.copyRaw')"
+-            :disabled="!clipboardSupported || !latestRaw"
+-            @click="copy()"
+-          />
++      <section class="nabd-panel">
++        <div class="nabd-panel-title">
++          <h3>أحدث بيانات خام</h3>
+         </div>
+-        <pre
+-          v-if="latestRaw"
+-          :class="[
+-            'max-h-96 overflow-auto rounded-xl p-3',
+-            'whitespace-pre-wrap break-all text-xs',
+-            'bg-neutral-950 text-neutral-200',
+-          ]"
+-        >{{ latestRaw }}</pre>
+-        <p v-else :class="['py-12 text-center text-sm text-neutral-500', 'dark:text-neutral-400']">
+-          {{ t('settings.pages.tikfinity.activity.rawEmpty') }}
++        <pre v-if="latestRaw" class="nabd-raw">{{ latestRaw }}</pre>
++        <p v-else class="nabd-empty">
++          لا توجد بيانات خام بعد.
+         </p>
+       </section>
+     </div>
+ 
+-    <div :class="['grid gap-4', 'lg:grid-cols-2']">
+-      <section
+-        :class="[
+-          'rounded-2xl p-4',
+-          'border border-neutral-200/70 dark:border-neutral-800',
+-          'bg-white/70 dark:bg-neutral-950/60',
+-        ]"
+-      >
+-        <div :class="['mb-4']">
+-          <h2 :class="['text-base font-semibold']">
+-            {{ t('settings.pages.tikfinity.quiz.title') }}
+-          </h2>
+-          <p :class="['mt-1 text-xs text-neutral-500', 'dark:text-neutral-400']">
+-            {{ t('settings.pages.tikfinity.quiz.description') }}
+-          </p>
++    <div class="nabd-grid">
++      <section class="nabd-panel">
++        <div class="nabd-panel-title">
++          <h3>مسابقة أسرع إجابة</h3>
++          <span>الفائز أول تعليق مطابق</span>
+         </div>
+ 
+-        <div v-if="engagementSnapshot.quiz" :class="['flex flex-col gap-3']">
+-          <div :class="['rounded-xl p-3', 'bg-primary-500/10']">
+-            <div :class="['text-xs font-semibold text-primary-700', 'dark:text-primary-300']">
+-              {{ t('settings.pages.tikfinity.quiz.active') }}
+-            </div>
+-            <p :class="['mt-1 text-sm']">
+-              {{ engagementSnapshot.quiz.question }}
+-            </p>
+-          </div>
+-          <Button
+-            color="red"
+-            variant="secondary"
+-            icon="i-solar:stop-circle-bold-duotone"
+-            :label="t('settings.pages.tikfinity.quiz.cancel')"
+-            @click="cancelQuiz"
+-          />
++        <div v-if="quiz" class="nabd-live-box">
++          <strong>السؤال نشط الآن</strong>
++          <p>{{ quiz.question }}</p>
++          <button type="button" class="danger secondary" @click="cancelQuiz">
++            إيقاف السؤال
++          </button>
+         </div>
+ 
+-        <div v-else :class="['flex flex-col gap-3']">
+-          <FieldInput
+-            v-model="quizQuestion"
+-            :label="t('settings.pages.tikfinity.quiz.question.label')"
+-            :placeholder="t('settings.pages.tikfinity.quiz.question.placeholder')"
+-          />
+-          <FieldInput
+-            v-model="quizAnswers"
+-            :label="t('settings.pages.tikfinity.quiz.answers.label')"
+-            :description="t('settings.pages.tikfinity.quiz.answers.description')"
+-            :placeholder="t('settings.pages.tikfinity.quiz.answers.placeholder')"
+-          />
+-          <FieldInput
+-            v-model="quizReward"
+-            type="number"
+-            :label="t('settings.pages.tikfinity.quiz.reward.label')"
+-          />
+-          <Button
+-            color="primary"
+-            variant="primary"
+-            icon="i-solar:cup-star-bold-duotone"
+-            :label="t('settings.pages.tikfinity.quiz.start')"
+-            :disabled="!canRunGames"
+-            @click="startQuiz"
+-          />
++        <div v-else class="nabd-form-grid">
++          <label class="nabd-field">
++            <span>السؤال</span>
++            <input v-model="quizQuestion" placeholder="ما عاصمة المملكة العربية السعودية؟">
++          </label>
++          <label class="nabd-field">
++            <span>الإجابات المقبولة</span>
++            <small>افصل بينها بفاصلة.</small>
++            <input v-model="quizAnswers" placeholder="الرياض, Riyadh">
++          </label>
++          <label class="nabd-field">
++            <span>نقاط الفائز</span>
++            <input v-model.number="quizReward" type="number" min="1">
++          </label>
++          <button type="button" class="primary" :disabled="!canRunGames" @click="startQuiz">
++            بدء المسابقة
++          </button>
+         </div>
+ 
+-        <div v-if="engagementSnapshot.winner" :class="['mt-4 rounded-xl p-3', 'bg-green-500/10']">
+-          <div :class="['text-xs font-semibold text-green-700', 'dark:text-green-300']">
+-            {{ t('settings.pages.tikfinity.quiz.latestWinner') }}
+-          </div>
+-          <p :class="['mt-1 text-sm']">
+-            {{ engagementSnapshot.winner.displayName }} · {{ engagementSnapshot.winner.answer }}
+-          </p>
++        <div v-if="winner" class="nabd-live-box success">
++          <strong>آخر فائز</strong>
++          <p>{{ winner.displayName }} - {{ winner.answer }}</p>
+         </div>
+       </section>
+ 
+-      <section
+-        :class="[
+-          'rounded-2xl p-4',
+-          'border border-neutral-200/70 dark:border-neutral-800',
+-          'bg-white/70 dark:bg-neutral-950/60',
+-        ]"
+-      >
+-        <div :class="['mb-3 flex items-center justify-between gap-3']">
+-          <div>
+-            <h2 :class="['text-base font-semibold']">
+-              {{ t('settings.pages.tikfinity.leaderboard.title') }}
+-            </h2>
+-            <p :class="['mt-1 text-xs text-neutral-500', 'dark:text-neutral-400']">
+-              {{ t('settings.pages.tikfinity.leaderboard.commands') }}
+-            </p>
+-          </div>
+-          <IconButton
+-            icon="i-solar:trash-bin-trash-bold-duotone"
+-            :aria-label="t('settings.pages.tikfinity.leaderboard.clear')"
+-            :title="t('settings.pages.tikfinity.leaderboard.clear')"
+-            :disabled="engagementSnapshot.scores.length === 0"
+-            @click="clearScores"
+-          />
++      <section class="nabd-panel">
++        <div class="nabd-panel-title">
++          <h3>ترتيب المتابعين</h3>
++          <button type="button" class="ghost" :disabled="viewerScores.length === 0" @click="clearScores">
++            مسح النقاط
++          </button>
+         </div>
+ 
+-        <div v-if="engagementSnapshot.scores.length" :class="['flex flex-col gap-2']">
+-          <div
+-            v-for="(score, index) in engagementSnapshot.scores.slice(0, 10)"
+-            :key="score.userId"
+-            :class="[
+-              'grid grid-cols-[2rem_minmax(0,1fr)_auto] items-center gap-2 rounded-xl px-3 py-2',
+-              'bg-neutral-100/70 dark:bg-neutral-900/80',
+-            ]"
+-          >
+-            <span :class="['text-sm font-semibold text-primary-600', 'dark:text-primary-300']">{{ index + 1 }}</span>
+-            <span :class="['truncate text-sm']">{{ score.displayName }}</span>
+-            <span :class="['text-sm font-semibold tabular-nums']">{{ score.points }}</span>
+-          </div>
++        <div v-if="viewerScores.length" class="nabd-list">
++          <article v-for="(score, index) in viewerScores.slice(0, 10)" :key="score.userId" class="nabd-score">
++            <span>{{ index + 1 }}</span>
++            <strong>{{ score.displayName }}</strong>
++            <b>{{ score.points }}</b>
++          </article>
+         </div>
+-        <p v-else :class="['py-12 text-center text-sm text-neutral-500', 'dark:text-neutral-400']">
+-          {{ t('settings.pages.tikfinity.leaderboard.empty') }}
++        <p v-else class="nabd-empty">
++          لا توجد نقاط بعد. أوامر الجمهور: !نقاط و !ترتيب.
+         </p>
+       </section>
+     </div>
+ 
+-    <section
+-      :class="[
+-        'rounded-2xl p-4',
+-        'border border-neutral-200/70 dark:border-neutral-800',
+-        'bg-white/70 dark:bg-neutral-950/60',
+-      ]"
+-    >
+-      <div :class="['mb-4']">
+-        <h2 :class="['text-base font-semibold']">
+-          {{ t('settings.pages.tikfinity.poll.title') }}
+-        </h2>
+-        <p :class="['mt-1 text-xs text-neutral-500', 'dark:text-neutral-400']">
+-          {{ t('settings.pages.tikfinity.poll.description') }}
+-        </p>
++    <section class="nabd-panel">
++      <div class="nabd-panel-title">
++        <h3>تصويت الجمهور</h3>
++        <span>كل متابع يصوت مرة بكتابة الرقم أو اسم الخيار</span>
+       </div>
+ 
+-      <div v-if="engagementSnapshot.poll" :class="['grid gap-4', 'lg:grid-cols-[minmax(0,1fr)_auto]']">
+-        <div>
+-          <p :class="['mb-3 text-sm font-semibold']">
+-            {{ engagementSnapshot.poll.question }}
+-          </p>
+-          <div :class="['grid gap-2', 'sm:grid-cols-2']">
+-            <div
+-              v-for="(option, index) in engagementSnapshot.poll.options"
+-              :key="option.label"
+-              :class="[
+-                'grid grid-cols-[2rem_minmax(0,1fr)_auto] items-center gap-2 rounded-xl px-3 py-2',
+-                'bg-primary-500/10',
+-              ]"
+-            >
+-              <span :class="['text-sm font-semibold text-primary-600', 'dark:text-primary-300']">{{ index + 1 }}</span>
+-              <span :class="['truncate text-sm']">{{ option.label }}</span>
+-              <span :class="['text-sm font-semibold tabular-nums']">{{ option.votes }}</span>
+-            </div>
+-          </div>
++      <div v-if="poll" class="nabd-live-box">
++        <strong>{{ poll.question }}</strong>
++        <div class="nabd-list compact">
++          <article v-for="(option, index) in poll.options" :key="option.label" class="nabd-score">
++            <span>{{ index + 1 }}</span>
++            <strong>{{ option.label }}</strong>
++            <b>{{ option.votes }}</b>
++          </article>
+         </div>
+-        <Button
+-          color="primary"
+-          variant="secondary"
+-          icon="i-solar:flag-2-bold-duotone"
+-          :label="t('settings.pages.tikfinity.poll.finish')"
+-          @click="stopPoll"
+-        />
++        <button type="button" class="primary secondary" @click="stopPoll">
++          إنهاء التصويت
++        </button>
+       </div>
+ 
+-      <div v-else :class="['grid gap-3', 'lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] lg:items-end']">
+-        <FieldInput
+-          v-model="pollQuestion"
+-          :label="t('settings.pages.tikfinity.poll.question.label')"
+-          :placeholder="t('settings.pages.tikfinity.poll.question.placeholder')"
+-        />
+-        <FieldInput
+-          v-model="pollOptions"
+-          :label="t('settings.pages.tikfinity.poll.options.label')"
+-          :description="t('settings.pages.tikfinity.poll.options.description')"
+-          :placeholder="t('settings.pages.tikfinity.poll.options.placeholder')"
+-        />
+-        <Button
+-          color="primary"
+-          variant="primary"
+-          icon="i-solar:chart-square-bold-duotone"
+-          :label="t('settings.pages.tikfinity.poll.start')"
+-          :disabled="!canRunGames"
+-          @click="startPoll"
+-        />
++      <div v-else class="nabd-form-grid poll">
++        <label class="nabd-field">
++          <span>سؤال التصويت</span>
++          <input v-model="pollQuestion" placeholder="ما اللعبة التالية؟">
++        </label>
++        <label class="nabd-field">
++          <span>الخيارات</span>
++          <small>اكتب خيارين على الأقل وافصل بينها بفاصلة.</small>
++          <input v-model="pollOptions" placeholder="أسئلة, تحديات, خمن الكلمة">
++        </label>
++        <button type="button" class="primary" :disabled="!canRunGames" @click="startPoll">
++          بدء التصويت
++        </button>
+       </div>
+ 
+-      <div v-if="engagementSnapshot.pollResult" :class="['mt-4 rounded-xl p-3', 'bg-green-500/10']">
+-        <div :class="['text-xs font-semibold text-green-700', 'dark:text-green-300']">
+-          {{ t('settings.pages.tikfinity.poll.latestResult') }}
+-        </div>
+-        <p :class="['mt-1 text-sm']">
+-          {{ engagementSnapshot.pollResult.options.map(option => `${option.label}: ${option.votes}`).join(' · ') }}
+-        </p>
++      <div v-if="pollResult" class="nabd-live-box success">
++        <strong>آخر نتيجة</strong>
++        <p>{{ pollResult.options.map(option => `${option.label}: ${option.votes}`).join(' - ') }}</p>
+       </div>
+     </section>
+   </div>
+@@ -680,3 +469,315 @@ meta:
+   stageTransition:
+     name: slide
+ </route>
++
++<style scoped>
++.nabd-page {
++  min-height: 100%;
++  padding-bottom: 48px;
++  color: #f8fafc;
++}
++
++.nabd-hero,
++.nabd-panel,
++.nabd-alert {
++  border: 1px solid rgba(148, 163, 184, 0.24);
++  border-radius: 14px;
++  background: rgba(15, 23, 42, 0.78);
++  box-shadow: 0 18px 45px rgba(0, 0, 0, 0.22);
++}
++
++.nabd-hero {
++  display: flex;
++  align-items: flex-start;
++  justify-content: space-between;
++  gap: 16px;
++  padding: 20px;
++}
++
++.nabd-eyebrow {
++  margin: 0 0 6px;
++  color: #38bdf8;
++  font-size: 12px;
++  font-weight: 800;
++}
++
++.nabd-hero h2,
++.nabd-panel h3 {
++  margin: 0;
++  color: #fff;
++}
++
++.nabd-hero p {
++  max-width: 760px;
++  margin: 8px 0 0;
++  color: #cbd5e1;
++  line-height: 1.8;
++}
++
++.nabd-status {
++  flex: 0 0 auto;
++  border-radius: 999px;
++  background: rgba(148, 163, 184, 0.16);
++  color: #e2e8f0;
++  padding: 8px 12px;
++  font-size: 12px;
++  font-weight: 800;
++}
++
++.nabd-status-ok {
++  background: rgba(34, 197, 94, 0.18);
++  color: #86efac;
++}
++
++.nabd-status-wait {
++  background: rgba(245, 158, 11, 0.18);
++  color: #fcd34d;
++}
++
++.nabd-alert {
++  display: grid;
++  gap: 6px;
++  margin-top: 14px;
++  padding: 14px 16px;
++  border-color: rgba(251, 146, 60, 0.45);
++  background: rgba(124, 45, 18, 0.62);
++  color: #ffedd5;
++}
++
++.nabd-panel {
++  margin-top: 14px;
++  padding: 16px;
++}
++
++.nabd-panel-title {
++  display: flex;
++  align-items: center;
++  justify-content: space-between;
++  gap: 12px;
++  margin-bottom: 14px;
++}
++
++.nabd-panel-title span,
++.nabd-field small,
++.nabd-empty {
++  color: #94a3b8;
++  font-size: 12px;
++}
++
++.nabd-source-tabs,
++.nabd-actions,
++.nabd-grid,
++.nabd-form-grid,
++.nabd-counters {
++  display: grid;
++  gap: 10px;
++}
++
++.nabd-source-tabs {
++  grid-template-columns: repeat(2, minmax(0, 1fr));
++}
++
++.nabd-grid {
++  grid-template-columns: repeat(2, minmax(0, 1fr));
++}
++
++.nabd-form-grid {
++  grid-template-columns: minmax(0, 1fr);
++}
++
++.nabd-form-grid.poll {
++  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
++  align-items: end;
++}
++
++.nabd-counters {
++  grid-template-columns: repeat(5, minmax(0, 1fr));
++}
++
++.nabd-counters div,
++.nabd-event,
++.nabd-score,
++.nabd-live-box {
++  border-radius: 12px;
++  background: rgba(30, 41, 59, 0.84);
++  padding: 12px;
++}
++
++.nabd-counters span {
++  display: block;
++  color: #94a3b8;
++  font-size: 12px;
++}
++
++.nabd-counters strong {
++  display: block;
++  margin-top: 6px;
++  color: #fff;
++  font-size: 26px;
++  font-variant-numeric: tabular-nums;
++}
++
++.nabd-field {
++  display: grid;
++  gap: 6px;
++  margin-top: 12px;
++}
++
++.nabd-field span,
++.nabd-check {
++  color: #e2e8f0;
++  font-size: 14px;
++  font-weight: 700;
++}
++
++.nabd-field input {
++  width: 100%;
++  min-height: 42px;
++  border: 1px solid rgba(148, 163, 184, 0.36);
++  border-radius: 10px;
++  background: rgba(2, 6, 23, 0.72);
++  color: #fff;
++  padding: 9px 11px;
++  outline: none;
++}
++
++.nabd-field input:focus {
++  border-color: #38bdf8;
++}
++
++.nabd-check {
++  display: flex;
++  align-items: center;
++  gap: 8px;
++  margin-top: 12px;
++  color: #cbd5e1;
++  font-weight: 500;
++}
++
++button {
++  min-height: 40px;
++  border: 0;
++  border-radius: 10px;
++  background: rgba(51, 65, 85, 0.9);
++  color: #e2e8f0;
++  cursor: pointer;
++  font-weight: 800;
++  padding: 9px 13px;
++}
++
++button.active,
++button.primary {
++  background: #0284c7;
++  color: #fff;
++}
++
++button.danger {
++  background: #dc2626;
++  color: #fff;
++}
++
++button.secondary {
++  background: rgba(14, 165, 233, 0.22);
++  color: #bae6fd;
++}
++
++button.ghost {
++  background: rgba(148, 163, 184, 0.15);
++}
++
++button:disabled {
++  cursor: not-allowed;
++  opacity: 0.48;
++}
++
++.nabd-list {
++  display: grid;
++  gap: 8px;
++}
++
++.nabd-list.compact {
++  margin-top: 10px;
++}
++
++.nabd-event div,
++.nabd-score {
++  display: grid;
++  grid-template-columns: minmax(0, 1fr) auto;
++  gap: 10px;
++  align-items: center;
++}
++
++.nabd-event strong,
++.nabd-score strong {
++  min-width: 0;
++  overflow: hidden;
++  color: #fff;
++  text-overflow: ellipsis;
++  white-space: nowrap;
++}
++
++.nabd-event span,
++.nabd-score span,
++.nabd-score b {
++  color: #7dd3fc;
++  font-size: 12px;
++  font-weight: 800;
++}
++
++.nabd-event p,
++.nabd-live-box p {
++  margin: 8px 0 0;
++  color: #cbd5e1;
++  line-height: 1.7;
++}
++
++.nabd-score {
++  grid-template-columns: 32px minmax(0, 1fr) auto;
++}
++
++.nabd-live-box {
++  display: grid;
++  gap: 10px;
++  border: 1px solid rgba(56, 189, 248, 0.24);
++}
++
++.nabd-live-box.success {
++  margin-top: 12px;
++  border-color: rgba(34, 197, 94, 0.35);
++  background: rgba(20, 83, 45, 0.46);
++}
++
++.nabd-empty {
++  margin: 0;
++  padding: 34px 10px;
++  text-align: center;
++}
++
++.nabd-raw {
++  max-height: 300px;
++  overflow: auto;
++  border-radius: 12px;
++  background: #020617;
++  color: #d1d5db;
++  direction: ltr;
++  font-size: 12px;
++  line-height: 1.6;
++  padding: 12px;
++  white-space: pre-wrap;
++  word-break: break-all;
++}
++
++@media (max-width: 900px) {
++  .nabd-hero,
++  .nabd-panel-title {
++    align-items: stretch;
++    flex-direction: column;
++  }
++
++  .nabd-grid,
++  .nabd-counters,
++  .nabd-form-grid.poll {
++    grid-template-columns: 1fr;
++  }
++}
++</style>
+diff --git a/apps/stage-tamagotchi/src/renderer/stores/tikfinity-runtime.ts b/apps/stage-tamagotchi/src/renderer/stores/tikfinity-runtime.ts
+index 2a989a4..0af3e18 100644
+--- a/apps/stage-tamagotchi/src/renderer/stores/tikfinity-runtime.ts
++++ b/apps/stage-tamagotchi/src/renderer/stores/tikfinity-runtime.ts
+@@ -60,6 +60,21 @@ function idleDeliverySnapshot(): TikFinityDeliverySnapshot {
+   }
+ }
+ 
++function normalizeViewerScores(value: unknown): TikFinityViewerScore[] {
++  if (!Array.isArray(value))
++    return []
++
++  return value
++    .filter((score): score is TikFinityViewerScore => {
++      if (!score || typeof score !== 'object')
++        return false
++      const candidate = score as Partial<TikFinityViewerScore>
++      return typeof candidate.userId === 'string'
++        && typeof candidate.displayName === 'string'
++        && typeof candidate.points === 'number'
++    })
++}
++
+ /** Keeps the TikFinity connection in the main character window. */
+ export const useTikFinityRuntimeStore = defineStore('nabd-tikfinity-runtime', () => {
+   const serverChannelStore = useModsServerChannelStore()
+@@ -68,14 +83,14 @@ export const useTikFinityRuntimeStore = defineStore('nabd-tikfinity-runtime', ()
+   const tiktokUsername = useLocalStorage('settings/tikfinity/tiktok-username', '')
+   const includeLikes = useLocalStorage('settings/tikfinity/include-likes', false)
+   const enabled = useLocalStorage('settings/tikfinity/enabled', false)
+-  const savedScores = useLocalStorage<TikFinityViewerScore[]>('settings/tikfinity/viewer-scores', [])
++  const savedScores = useLocalStorage<unknown>('settings/tikfinity/viewer-scores', [])
+   const quizReward = useLocalStorage('settings/tikfinity/quiz-reward', 50)
+ 
+   const snapshot = ref<TikFinityBridgeSnapshot>(idleSnapshot())
+   const delivery = ref<TikFinityDeliverySnapshot>(idleDeliverySnapshot())
+   const events = ref<TikFinityEvent[]>([])
+   const records = ref<TikFinityRecord[]>([])
+-  const engagement = ref<TikFinityEngagementSnapshot>({ scores: savedScores.value })
++  const engagement = ref<TikFinityEngagementSnapshot>({ scores: normalizeViewerScores(savedScores.value) })
+   const errorMessage = ref('')
+   const busy = ref(false)
+   const isOwner = ref(false)
+@@ -238,10 +253,11 @@ export const useTikFinityRuntimeStore = defineStore('nabd-tikfinity-runtime', ()
+         publishState()
+       },
+       engagement: {
+-        initialScores: savedScores.value,
++        initialScores: normalizeViewerScores(savedScores.value),
+         onSnapshot: (value) => {
+-          engagement.value = value
+-          savedScores.value = value.scores
++          const scores = normalizeViewerScores(value.scores)
++          engagement.value = { ...value, scores }
++          savedScores.value = scores
+           publishState()
+         },
+       },
+diff --git a/plugins/airi-plugin-tikfinity/package.json b/plugins/airi-plugin-tikfinity/package.json
+index dd8a2c7..fdc0539 100644
+--- a/plugins/airi-plugin-tikfinity/package.json
++++ b/plugins/airi-plugin-tikfinity/package.json
+@@ -1,7 +1,7 @@
+ {
+   "name": "@proj-airi/airi-plugin-tikfinity",
+   "type": "module",
+-  "version": "0.11.3-nabd.4",
++  "version": "0.11.3-nabd.6",
+   "private": true,
+   "description": "TikFinity live event bridge for AIRI",
+   "exports": {
