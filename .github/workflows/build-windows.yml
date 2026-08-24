@@ -38,7 +38,7 @@ jobs:
       - name: Add NABD Live to AIRI
         shell: pwsh
         run: |
-          $patch = '../nabd/patches/nabd-0.11.3-nabd.5.patch'
+          $patch = Join-Path $env:GITHUB_WORKSPACE 'nabd/patches/nabd-0.11.3-nabd.5.patch'
           if (-not (Test-Path $patch)) { throw "NABD patch not found: $patch" }
           Expand-Archive nabd/NABD-Live-github-overlay.zip -DestinationPath airi -Force
           git -C airi config core.autocrlf false
