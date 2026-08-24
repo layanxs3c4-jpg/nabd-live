@@ -136,10 +136,10 @@ index 4c316c8..a9e4262 100644
              :class="[
                'grid grid-cols-[2rem_minmax(0,1fr)_auto] items-center gap-2 rounded-xl px-3 py-2',
 diff --git a/apps/stage-tamagotchi/src/renderer/stores/tikfinity-runtime.ts b/apps/stage-tamagotchi/src/renderer/stores/tikfinity-runtime.ts
-index 2a989a4..690d51f 100644
+index 2a989a4..0af3e18 100644
 --- a/apps/stage-tamagotchi/src/renderer/stores/tikfinity-runtime.ts
 +++ b/apps/stage-tamagotchi/src/renderer/stores/tikfinity-runtime.ts
-@@ -60,6 +60,25 @@ function idleDeliverySnapshot(): TikFinityDeliverySnapshot {
+@@ -60,6 +60,21 @@ function idleDeliverySnapshot(): TikFinityDeliverySnapshot {
    }
  }
  
@@ -156,16 +156,12 @@ index 2a989a4..690d51f 100644
 +        && typeof candidate.displayName === 'string'
 +        && typeof candidate.points === 'number'
 +    })
-+    .map(score => ({
-+      ...score,
-+      lastInteractionAt: typeof score.lastInteractionAt === 'number' ? score.lastInteractionAt : 0,
-+    }))
 +}
 +
  /** Keeps the TikFinity connection in the main character window. */
  export const useTikFinityRuntimeStore = defineStore('nabd-tikfinity-runtime', () => {
    const serverChannelStore = useModsServerChannelStore()
-@@ -68,14 +87,14 @@ export const useTikFinityRuntimeStore = defineStore('nabd-tikfinity-runtime', ()
+@@ -68,14 +83,14 @@ export const useTikFinityRuntimeStore = defineStore('nabd-tikfinity-runtime', ()
    const tiktokUsername = useLocalStorage('settings/tikfinity/tiktok-username', '')
    const includeLikes = useLocalStorage('settings/tikfinity/include-likes', false)
    const enabled = useLocalStorage('settings/tikfinity/enabled', false)
@@ -182,7 +178,7 @@ index 2a989a4..690d51f 100644
    const errorMessage = ref('')
    const busy = ref(false)
    const isOwner = ref(false)
-@@ -238,10 +257,11 @@ export const useTikFinityRuntimeStore = defineStore('nabd-tikfinity-runtime', ()
+@@ -238,10 +253,11 @@ export const useTikFinityRuntimeStore = defineStore('nabd-tikfinity-runtime', ()
          publishState()
        },
        engagement: {
