@@ -20,7 +20,7 @@ jobs:
     timeout-minutes: 90
     env:
       VITE_DISTRIBUTION: nabd
-      RELEASE_TAG: v0.11.3-nabd.6
+      RELEASE_TAG: v0.11.3-nabd.7
 
     steps:
       - name: Check out the NABD builder
@@ -38,11 +38,16 @@ jobs:
       - name: Add NABD Live to AIRI
         shell: pwsh
         run: |
-          $patch = Join-Path $env:GITHUB_WORKSPACE 'nabd/patches/nabd-0.11.3-nabd.6.patch'
-          if (-not (Test-Path $patch)) { throw "NABD patch not found: $patch" }
           Expand-Archive nabd/NABD-Live-github-overlay.zip -DestinationPath airi -Force
           git -C airi config core.autocrlf false
-          git -C airi apply --ignore-space-change --ignore-whitespace --whitespace=nowarn $patch
+          $patches = @(
+            (Join-Path $env:GITHUB_WORKSPACE 'nabd/patches/nabd-0.11.3-nabd.6.patch'),
+            (Join-Path $env:GITHUB_WORKSPACE 'nabd/patches/nabd-0.11.3-nabd.7.patch')
+          )
+          foreach ($patch in $patches) {
+            if (-not (Test-Path $patch)) { throw "NABD patch not found: $patch" }
+            git -C airi apply --ignore-space-change --ignore-whitespace --whitespace=nowarn $patch
+          }
 
       - name: Set up pnpm
         uses: pnpm/action-setup@v4
@@ -132,5 +137,5 @@ jobs:
             gh release upload $env:RELEASE_TAG $installer.FullName $checksum.FullName --clobber --repo $env:GITHUB_REPOSITORY
           }
           else {
-            gh release create $env:RELEASE_TAG $installer.FullName $checksum.FullName --repo $env:GITHUB_REPOSITORY --title "NABD Live 0.11.3-nabd.6 for Windows" --notes "Windows x64 installer with a simplified TikTok/TikFinity settings page that is visible even on failing configurations, TikFinity and direct TikTok LIVE sources, existing in-app chat and speech providers, fastest-answer quizzes, polls, and viewer points."
+            gh release create $env:RELEASE_TAG $installer.FullName $checksum.FullName --repo $env:GITHUB_REPOSITORY --title "NABD Live 0.11.3-nabd.7 for Windows" --notes "Windows x64 installer with clearer direct TikTok LIVE failure diagnostics, automatic stop on failed direct connections, a simplified TikTok/TikFinity settings page, TikFinity and direct TikTok LIVE sources, fastest-answer quizzes, polls, and viewer points."
           }
