@@ -6,6 +6,8 @@ on:
       - main
     paths:
       - NABD-Live-github-overlay.zip
+      - patches/**
+      - .github/workflows/build-windows.yml
   workflow_dispatch:
 
 permissions:
@@ -18,7 +20,7 @@ jobs:
     timeout-minutes: 90
     env:
       VITE_DISTRIBUTION: nabd
-      RELEASE_TAG: v0.11.3-nabd.4
+      RELEASE_TAG: v0.11.3-nabd.5
 
     steps:
       - name: Check out the NABD builder
@@ -35,7 +37,9 @@ jobs:
 
       - name: Add NABD Live to AIRI
         shell: pwsh
-        run: Expand-Archive nabd/NABD-Live-github-overlay.zip -DestinationPath airi -Force
+        run: |
+          Expand-Archive nabd/NABD-Live-github-overlay.zip -DestinationPath airi -Force
+          git -C airi apply ../nabd/patches/nabd-0.11.3-nabd.5.patch
 
       - name: Set up pnpm
         uses: pnpm/action-setup@v4
@@ -125,5 +129,5 @@ jobs:
             gh release upload $env:RELEASE_TAG $installer.FullName $checksum.FullName --clobber --repo $env:GITHUB_REPOSITORY
           }
           else {
-            gh release create $env:RELEASE_TAG $installer.FullName $checksum.FullName --repo $env:GITHUB_REPOSITORY --title "NABD Live 0.11.3-nabd.4 for Windows" --notes "Windows x64 installer with TikFinity and direct TikTok LIVE sources, existing in-app chat and speech providers, fastest-answer quizzes, polls, viewer points, and adjustable avatar motion."
+            gh release create $env:RELEASE_TAG $installer.FullName $checksum.FullName --repo $env:GITHUB_REPOSITORY --title "NABD Live 0.11.3-nabd.5 for Windows" --notes "Windows x64 installer with TikFinity and direct TikTok LIVE sources, existing in-app chat and speech providers, fastest-answer quizzes, polls, viewer points, adjustable avatar motion, and a fix for the blank TikTok/TikFinity settings page."
           }
