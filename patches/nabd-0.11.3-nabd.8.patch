@@ -1,0 +1,554 @@
+diff --git a/NABD-START-HERE-AR.md b/NABD-START-HERE-AR.md
+index 3e44a5c..4f02a04 100644
+--- a/NABD-START-HERE-AR.md
++++ b/NABD-START-HERE-AR.md
+@@ -34,3 +34,3 @@
+ 5. بعد نجاح البناء، نزّل الملف **NABD-Live-Windows-x64** من قسم Artifacts.
+-6. فك الضغط، ثم شغّل ملف `NABD-Live-0.11.3-nabd.7-windows-x64-setup.exe`.
++6. فك الضغط، ثم شغّل ملف `NABD-Live-0.11.3-nabd.8-windows-x64-setup.exe`.
+ 
+diff --git a/apps/stage-tamagotchi/package.json b/apps/stage-tamagotchi/package.json
+index 118220a..d1fd351 100644
+--- a/apps/stage-tamagotchi/package.json
++++ b/apps/stage-tamagotchi/package.json
+@@ -3,3 +3,3 @@
+   "type": "module",
+-  "version": "0.11.3-nabd.7",
++  "version": "0.11.3-nabd.8",
+   "private": true,
+diff --git a/apps/stage-tamagotchi/src/main/services/nabd/tiktok-live.ts b/apps/stage-tamagotchi/src/main/services/nabd/tiktok-live.ts
+index 1060064..01237ef 100644
+--- a/apps/stage-tamagotchi/src/main/services/nabd/tiktok-live.ts
++++ b/apps/stage-tamagotchi/src/main/services/nabd/tiktok-live.ts
+@@ -18,4 +18,8 @@ interface DirectConnection {
+ 
++const CONNECT_TIMEOUT_MS = 20_000
+ let activeConnection: DirectConnection | undefined
+ let activeOwner: WebContents | undefined
++const cancelledConnections = new WeakSet<DirectConnection>()
++const reportedConnections = new WeakSet<DirectConnection>()
++const timedOutConnections = new WeakSet<DirectConnection>()
+ 
+@@ -130,2 +134,25 @@ function emitEvent(owner: WebContents, event: TikFinityEvent): void {
+ 
++async function disconnectConnection(connection: DirectConnection): Promise<void> {
++  await Promise.resolve(connection.disconnect()).catch(() => undefined)
++}
++
++async function connectWithTimeout(connection: DirectConnection): Promise<Record<string, unknown>> {
++  let timer: ReturnType<typeof setTimeout> | undefined
++  const timeout = new Promise<never>((_, reject) => {
++    timer = setTimeout(() => {
++      timedOutConnections.add(connection)
++      void disconnectConnection(connection)
++      reject(new Error('انتهت مهلة الاتصال ببث TikTok. إذا كان البث شغالًا استخدم TikFinity Desktop أو أعد المحاولة.'))
++    }, CONNECT_TIMEOUT_MS)
++  })
++
++  try {
++    return await Promise.race([connection.connect(), timeout])
++  }
++  finally {
++    if (timer)
++      clearTimeout(timer)
++  }
++}
++
+ function bindEvents(connection: DirectConnection, owner: WebContents): void {
+@@ -189,2 +216,4 @@ function bindEvents(connection: DirectConnection, owner: WebContents): void {
+   connection.on('disconnected', () => {
++    if (timedOutConnections.has(connection))
++      return
+     if (activeConnection === connection) {
+@@ -199,2 +228,6 @@ function bindEvents(connection: DirectConnection, owner: WebContents): void {
+       const message = directTikTokMessage(error)
++      activeConnection = undefined
++      activeOwner = undefined
++      reportedConnections.add(connection)
++      void disconnectConnection(connection)
+       send(owner, STATUS_CHANNEL, { status: 'error', message })
+@@ -208,4 +241,6 @@ async function disconnectActive(): Promise<void> {
+   activeOwner = undefined
+-  if (connection)
+-    await Promise.resolve(connection.disconnect()).catch(() => undefined)
++  if (connection) {
++    cancelledConnections.add(connection)
++    await disconnectConnection(connection)
++  }
+ }
+@@ -232,5 +267,8 @@ export function setupNabdTikTokLive(): void {
+     try {
+-      const state = await connection.connect()
+-      if (activeConnection !== connection)
+-        throw new Error('تم إلغاء اتصال TikTok المباشر.')
++      const state = await connectWithTimeout(connection)
++      if (activeConnection !== connection) {
++        send(owner, STATUS_CHANNEL, { status: 'stopped', message: 'تم إلغاء اتصال TikTok المباشر.' })
++        cancelledConnections.delete(connection)
++        return { cancelled: true }
++      }
+       const roomId = stringValue(state.roomId)
+@@ -240,2 +278,13 @@ export function setupNabdTikTokLive(): void {
+     catch (error) {
++      if (cancelledConnections.has(connection)) {
++        cancelledConnections.delete(connection)
++        send(owner, STATUS_CHANNEL, { status: 'stopped', message: 'تم إلغاء اتصال TikTok المباشر.' })
++        return { cancelled: true }
++      }
++      if (reportedConnections.has(connection)) {
++        reportedConnections.delete(connection)
++        return { cancelled: true }
++      }
++      if (activeConnection && activeConnection !== connection)
++        return { cancelled: true }
+       if (activeConnection === connection) {
+@@ -244,2 +293,3 @@ export function setupNabdTikTokLive(): void {
+       }
++      timedOutConnections.delete(connection)
+       const message = directTikTokMessage(error)
+diff --git a/apps/stage-tamagotchi/src/renderer/pages/settings/tikfinity/index.vue b/apps/stage-tamagotchi/src/renderer/pages/settings/tikfinity/index.vue
+index c94bb5a..831f2f5 100644
+--- a/apps/stage-tamagotchi/src/renderer/pages/settings/tikfinity/index.vue
++++ b/apps/stage-tamagotchi/src/renderer/pages/settings/tikfinity/index.vue
+@@ -5,2 +5,3 @@ import { computed, onMounted, ref } from 'vue'
+ import { useTikFinityRuntimeStore } from '../../../stores/tikfinity-runtime'
++import { useNabdQuickSetup } from './use-nabd-quick-setup'
+ 
+@@ -26,2 +27,3 @@ interface DisplayEvent {
+ const runtimeStore = useTikFinityRuntimeStore()
++const quickSetup = useNabdQuickSetup()
+ const {
+@@ -41,2 +43,11 @@ const {
+ 
++const {
++  errorMessage: quickSetupError,
++  generateVoicePreview,
++  initialize: initializeQuickSetup,
++  readiness,
++  speechEnabled,
++  testingVoice,
++} = quickSetup
++
+ const quizQuestion = ref('')
+@@ -45,5 +56,6 @@ const pollQuestion = ref('')
+ const pollOptions = ref('')
++const testMessage = ref('اختبار من نبض: إذا سمعتِ هذه الرسالة فردّي على البث بصوتك.')
+ 
+-const isActive = computed(() => !['idle', 'stopped'].includes(snapshot.value.status))
+-const canRunGames = computed(() => ['socket-open', 'verified'].includes(snapshot.value.status))
++const isActive = computed(() => busy.value || !['idle', 'stopped'].includes(snapshot.value.status))
++const canRunGames = computed(() => ['socket-open', 'verified'].includes(snapshot.value.status) && delivery.value.status === 'ready')
+ const latestRaw = computed(() => records.value[0]?.raw ?? '')
+@@ -75,2 +87,4 @@ const deliveryText = computed(() => {
+     return 'قناة الرد جاهزة'
++  if (delivery.value.status === 'error')
++    return 'قناة الرد فيها خطأ'
+   if (delivery.value.status === 'stopped')
+@@ -80,2 +94,14 @@ const deliveryText = computed(() => {
+ 
++const readinessText = computed(() => {
++  if (readiness.value.ready)
++    return 'الشخصية جاهزة للرد بالصوت'
++  if (!readiness.value.chatReady)
++    return 'إعداد المحادثة غير جاهز'
++  if (!readiness.value.speechReady)
++    return 'إعداد الصوت غير جاهز'
++  if (!readiness.value.speechEnabled)
++    return 'الصوت مكتوم'
++  return 'إعداد الشخصية يحتاج مراجعة'
++})
++
+ const statusClass = computed(() => {
+@@ -89,4 +115,6 @@ const statusClass = computed(() => {
+ function setSource(nextSource: TikTokSource): void {
+-  if (isActive.value)
++  if (source.value === nextSource)
+     return
++  if (isActive.value)
++    runtimeStore.disconnect()
+   source.value = nextSource
+@@ -136,3 +164,3 @@ function startQuiz(): void {
+   if (!canRunGames.value || !quizQuestion.value.trim() || answers.length === 0) {
+-    errorMessage.value = 'ابدأ الاتصال أولًا، ثم اكتب السؤال وإجابة واحدة على الأقل.'
++    errorMessage.value = 'ابدأ الاتصال وانتظر حتى تصبح قناة الرد جاهزة، ثم اكتب السؤال وإجابة واحدة على الأقل.'
+     return
+@@ -155,3 +183,3 @@ function startPoll(): void {
+   if (!canRunGames.value || !pollQuestion.value.trim() || options.length < 2) {
+-    errorMessage.value = 'ابدأ الاتصال أولًا، ثم اكتب سؤال التصويت وخيارين على الأقل.'
++    errorMessage.value = 'ابدأ الاتصال وانتظر حتى تصبح قناة الرد جاهزة، ثم اكتب سؤال التصويت وخيارين على الأقل.'
+     return
+@@ -167,2 +195,35 @@ function stopPoll(): void {
+ 
++function testCharacterReply(): void {
++  const text = testMessage.value.trim()
++  if (!text) {
++    errorMessage.value = 'اكتب نص اختبار لإرساله للشخصية.'
++    return
++  }
++  errorMessage.value = ''
++  runtimeStore.sendTestMessage(text)
++}
++
++async function testVoice(): Promise<void> {
++  errorMessage.value = ''
++  quickSetupError.value = ''
++  const audio = await generateVoicePreview()
++  if (!audio) {
++    errorMessage.value = quickSetupError.value || 'تعذر توليد اختبار الصوت.'
++    return
++  }
++
++  const url = URL.createObjectURL(new Blob([audio], { type: 'audio/mpeg' }))
++  const player = new Audio(url)
++  player.addEventListener('ended', () => URL.revokeObjectURL(url), { once: true })
++  try {
++    await player.play()
++  }
++  catch (error) {
++    URL.revokeObjectURL(url)
++    errorMessage.value = error instanceof Error && error.message
++      ? error.message
++      : 'تم توليد الصوت لكن Windows أو المتصفح الداخلي منع تشغيله.'
++  }
++}
++
+ function eventTitle(event: DisplayEvent): string {
+@@ -206,2 +267,3 @@ function viewerName(event: DisplayEvent): string {
+ onMounted(() => {
++  initializeQuickSetup()
+   runtimeStore.initializeClient()
+@@ -215,3 +277,3 @@ onMounted(() => {
+         <p class="nabd-eyebrow">
+-          NABD Live 0.11.3-nabd.7
++          NABD Live 0.11.3-nabd.8
+         </p>
+@@ -232,2 +294,50 @@ onMounted(() => {
+ 
++    <section class="nabd-panel">
++      <div class="nabd-panel-title">
++        <h3>جاهزية الشخصية والصوت</h3>
++        <span>{{ readinessText }}</span>
++      </div>
++
++      <div class="nabd-readiness">
++        <div :class="['nabd-ready-card', { ok: readiness.chatReady }]">
++          <span>المحادثة</span>
++          <strong>{{ readiness.chatReady ? 'جاهزة' : 'غير جاهزة' }}</strong>
++        </div>
++        <div :class="['nabd-ready-card', { ok: readiness.speechReady }]">
++          <span>الصوت</span>
++          <strong>{{ readiness.speechReady ? 'جاهز' : 'غير جاهز' }}</strong>
++        </div>
++        <div :class="['nabd-ready-card', { ok: readiness.speechEnabled }]">
++          <span>الكتم</span>
++          <strong>{{ readiness.speechEnabled ? 'الصوت يعمل' : 'مكتوم' }}</strong>
++        </div>
++        <div :class="['nabd-ready-card', { ok: delivery.status === 'ready' }]">
++          <span>قناة الشخصية</span>
++          <strong>{{ deliveryText }}</strong>
++        </div>
++      </div>
++
++      <label class="nabd-check">
++        <input v-model="speechEnabled" type="checkbox">
++        <span>تشغيل الصوت في NABD Live</span>
++      </label>
++
++      <div v-if="quickSetupError" class="nabd-inline-alert">
++        {{ quickSetupError }}
++      </div>
++
++      <div class="nabd-form-grid test">
++        <label class="nabd-field">
++          <span>نص اختبار للشخصية</span>
++          <input v-model="testMessage" placeholder="اكتب جملة اختبار">
++        </label>
++        <button type="button" class="primary secondary" @click="testCharacterReply">
++          اختبار رد الشخصية
++        </button>
++        <button type="button" class="ghost" :disabled="testingVoice" @click="testVoice">
++          {{ testingVoice ? 'جارٍ اختبار الصوت...' : 'اختبار الصوت فقط' }}
++        </button>
++      </div>
++    </section>
++
+     <section class="nabd-panel">
+@@ -242,3 +352,2 @@ onMounted(() => {
+           :class="{ active: source === 'tikfinity' }"
+-          :disabled="isActive"
+           @click="setSource('tikfinity')"
+@@ -250,3 +359,2 @@ onMounted(() => {
+           :class="{ active: source === 'tiktok-direct' }"
+-          :disabled="isActive"
+           @click="setSource('tiktok-direct')"
+@@ -279,3 +387,3 @@ onMounted(() => {
+         <button v-else type="button" class="danger" @click="disconnect">
+-          قطع الاتصال
++          قطع الاتصال / فك التعليق
+         </button>
+@@ -570,3 +678,4 @@ meta:
+ .nabd-form-grid,
+-.nabd-counters {
++.nabd-counters,
++.nabd-readiness {
+   display: grid;
+@@ -592,2 +701,7 @@ meta:
+ 
++.nabd-form-grid.test {
++  grid-template-columns: minmax(0, 1fr) auto auto;
++  align-items: end;
++}
++
+ .nabd-counters {
+@@ -596,2 +710,6 @@ meta:
+ 
++.nabd-readiness {
++  grid-template-columns: repeat(4, minmax(0, 1fr));
++}
++
+ .nabd-counters div,
+@@ -599,3 +717,4 @@ meta:
+ .nabd-score,
+-.nabd-live-box {
++.nabd-live-box,
++.nabd-ready-card {
+   border-radius: 12px;
+@@ -605,3 +724,9 @@ meta:
+ 
+-.nabd-counters span {
++.nabd-ready-card.ok {
++  border: 1px solid rgba(34, 197, 94, 0.32);
++  background: rgba(20, 83, 45, 0.34);
++}
++
++.nabd-counters span,
++.nabd-ready-card span {
+   display: block;
+@@ -611,3 +736,4 @@ meta:
+ 
+-.nabd-counters strong {
++.nabd-counters strong,
++.nabd-ready-card strong {
+   display: block;
+@@ -615,3 +741,2 @@ meta:
+   color: #fff;
+-  font-size: 26px;
+   font-variant-numeric: tabular-nums;
+@@ -619,2 +744,10 @@ meta:
+ 
++.nabd-counters strong {
++  font-size: 26px;
++}
++
++.nabd-ready-card strong {
++  font-size: 16px;
++}
++
+ .nabd-field {
+@@ -656,2 +789,10 @@ meta:
+ 
++.nabd-inline-alert {
++  margin-top: 10px;
++  border-radius: 10px;
++  background: rgba(124, 45, 18, 0.42);
++  color: #fed7aa;
++  padding: 10px 12px;
++}
++
+ button {
+@@ -778,3 +919,5 @@ button:disabled {
+   .nabd-counters,
+-  .nabd-form-grid.poll {
++  .nabd-form-grid.poll,
++  .nabd-form-grid.test,
++  .nabd-readiness {
+     grid-template-columns: 1fr;
+diff --git a/apps/stage-tamagotchi/src/renderer/stores/tikfinity-runtime.ts b/apps/stage-tamagotchi/src/renderer/stores/tikfinity-runtime.ts
+index 8c6fd0b..288fca5 100644
+--- a/apps/stage-tamagotchi/src/renderer/stores/tikfinity-runtime.ts
++++ b/apps/stage-tamagotchi/src/renderer/stores/tikfinity-runtime.ts
+@@ -35,2 +35,3 @@ type RuntimeCommand
+     | { type: 'request-state' }
++    | { type: 'send-test-message', text: string }
+     | { type: 'start-poll', question: string, options: string[] }
+@@ -103,2 +104,12 @@ function messageFromUnknown(error: unknown): string {
+ 
++function normalizeRuntimeError(error: unknown): string {
++  const message = errorMessageFrom(error)
++  if (typeof message === 'string') {
++    const trimmed = message.trim()
++    if (trimmed && trimmed !== '[object Object]')
++      return trimmed
++  }
++  return messageFromUnknown(error)
++}
++
+ /** Keeps the TikFinity connection in the main character window. */
+@@ -166,6 +177,3 @@ export const useTikFinityRuntimeStore = defineStore('nabd-tikfinity-runtime', ()
+   function reportError(error: unknown): void {
+-    const message = errorMessageFrom(error)
+-    errorMessage.value = typeof message === 'string' && message.trim()
+-      ? message.trim()
+-      : messageFromUnknown(error)
++    errorMessage.value = normalizeRuntimeError(error)
+     busy.value = false
+@@ -174,3 +182,17 @@ export const useTikFinityRuntimeStore = defineStore('nabd-tikfinity-runtime', ()
+ 
++  async function disconnectDirectQuietly(): Promise<void> {
++    try {
++      await window.electron.ipcRenderer.invoke('nabd:tiktok-direct:disconnect')
++    }
++    catch {}
++  }
++
+   function reportDirectConnectionError(error: unknown): void {
++    const currentPlugin = plugin.value
++    currentPlugin?.stop()
++    plugin.value = undefined
++    if (activeSource === 'tiktok-direct')
++      void disconnectDirectQuietly()
++    removeDirectListeners()
++    activeSource = undefined
+     enabled.value = false
+@@ -256,3 +278,3 @@ export const useTikFinityRuntimeStore = defineStore('nabd-tikfinity-runtime', ()
+     if (activeSource === 'tiktok-direct')
+-      void window.electron.ipcRenderer.invoke('nabd:tiktok-direct:disconnect')
++      await disconnectDirectQuietly()
+     removeDirectListeners()
+@@ -323,3 +345,3 @@ export const useTikFinityRuntimeStore = defineStore('nabd-tikfinity-runtime', ()
+     if (activeSource === 'tiktok-direct')
+-      void window.electron.ipcRenderer.invoke('nabd:tiktok-direct:disconnect')
++      void disconnectDirectQuietly()
+     removeDirectListeners()
+@@ -332,2 +354,32 @@ export const useTikFinityRuntimeStore = defineStore('nabd-tikfinity-runtime', ()
+ 
++  async function sendTestMessageLocally(text: string): Promise<void> {
++    const trimmed = text.trim()
++    if (!trimmed) {
++      reportError(new Error('اكتب نص اختبار لإرساله إلى الشخصية.'))
++      return
++    }
++
++    errorMessage.value = ''
++    delivery.value = { ...delivery.value, status: 'connecting' }
++    publishState()
++
++    try {
++      await serverChannelStore.ensureConnected()
++      delivery.value = { ...delivery.value, status: 'ready' }
++      await Promise.resolve(serverChannelStore.send({
++        type: 'input:text',
++        data: { text: trimmed },
++      }))
++      delivery.value = {
++        ...delivery.value,
++        sentMessageCount: delivery.value.sentMessageCount + 1,
++      }
++      publishState()
++    }
++    catch (error) {
++      delivery.value = { ...delivery.value, status: 'error' }
++      reportError(error)
++    }
++  }
++
+   async function handleCommand(command: RuntimeCommand): Promise<void> {
+@@ -350,2 +402,5 @@ export const useTikFinityRuntimeStore = defineStore('nabd-tikfinity-runtime', ()
+         return
++      case 'send-test-message':
++        await sendTestMessageLocally(command.text)
++        return
+       case 'clear-activity':
+@@ -427,2 +482,5 @@ export const useTikFinityRuntimeStore = defineStore('nabd-tikfinity-runtime', ()
+     enabled.value = false
++    busy.value = false
++    snapshot.value = { ...snapshot.value, status: 'stopped' }
++    delivery.value = { ...delivery.value, status: 'stopped', queuedMessageCount: 0 }
+     sendCommand({ type: 'disconnect' })
+@@ -430,2 +488,6 @@ export const useTikFinityRuntimeStore = defineStore('nabd-tikfinity-runtime', ()
+ 
++  function sendTestMessage(text: string): void {
++    sendCommand({ type: 'send-test-message', text })
++  }
++
+   function clearActivity(): void {
+@@ -459,3 +521,3 @@ export const useTikFinityRuntimeStore = defineStore('nabd-tikfinity-runtime', ()
+     if (activeSource === 'tiktok-direct')
+-      void window.electron.ipcRenderer.invoke('nabd:tiktok-direct:disconnect')
++      void disconnectDirectQuietly()
+     removeDirectListeners()
+@@ -490,2 +552,3 @@ export const useTikFinityRuntimeStore = defineStore('nabd-tikfinity-runtime', ()
+     stopPoll,
++    sendTestMessage,
+     disposeOwner,
+diff --git a/plugins/airi-plugin-tikfinity/package.json b/plugins/airi-plugin-tikfinity/package.json
+index 46e78d6..c67905a 100644
+--- a/plugins/airi-plugin-tikfinity/package.json
++++ b/plugins/airi-plugin-tikfinity/package.json
+@@ -3,3 +3,3 @@
+   "type": "module",
+-  "version": "0.11.3-nabd.7",
++  "version": "0.11.3-nabd.8",
+   "private": true,
+diff --git a/plugins/airi-plugin-tikfinity/src/plugin.ts b/plugins/airi-plugin-tikfinity/src/plugin.ts
+index 5a38ff9..0ba30ad 100644
+--- a/plugins/airi-plugin-tikfinity/src/plugin.ts
++++ b/plugins/airi-plugin-tikfinity/src/plugin.ts
+@@ -173,2 +173,11 @@ export class TikFinityAiriPlugin {
+ 
++  /** Sends one diagnostic message through the same AIRI input route used by live events. */
++  sendDiagnosticText(text: string): void {
++    const trimmed = text.trim()
++    if (!trimmed) {
++      throw new Error('Diagnostic text cannot be empty.')
++    }
++    this.sendText(trimmed)
++  }
++
+   /** Removes all saved viewer points from this plugin instance. */
+diff --git a/plugins/airi-plugin-tikfinity/test/plugin.test.ts b/plugins/airi-plugin-tikfinity/test/plugin.test.ts
+index 11ed2b6..58f10e1 100644
+--- a/plugins/airi-plugin-tikfinity/test/plugin.test.ts
++++ b/plugins/airi-plugin-tikfinity/test/plugin.test.ts
+@@ -134,2 +134,41 @@ describe('TikFinityAiriPlugin', () => {
+ 
++  it('sends a diagnostic message through the AIRI input channel', async () => {
++    const sendOrThrow = vi.fn()
++    const plugin = new TikFinityAiriPlugin({
++      tikFinityEndpoint: 'ws://localhost:21213',
++      createAiriClient: () => ({ connect: async () => {}, sendOrThrow, close: vi.fn() }),
++    })
++
++    await plugin.startExternal()
++    plugin.sendDiagnosticText('اختبار نبض')
++
++    expect(sendOrThrow).toHaveBeenCalledWith({
++      type: 'input:text',
++      data: { text: 'اختبار نبض' },
++    })
++  })
++
++  it('does not deliver direct events after stop', async () => {
++    const sendOrThrow = vi.fn()
++    const plugin = new TikFinityAiriPlugin({
++      tikFinityEndpoint: 'direct://tiktok',
++      createAiriClient: () => ({ connect: async () => {}, sendOrThrow, close: vi.fn() }),
++    })
++
++    await plugin.startExternal()
++    plugin.stop()
++    plugin.ingestEvent({
++      type: 'comment',
++      eventId: 'direct-after-stop',
++      rawType: 'chat',
++      receivedAt: 1_000,
++      source: 'tiktok-direct',
++      user: { id: '42', username: 'sara', displayName: 'Sara' },
++      text: 'لا ترسل',
++    })
++
++    expect(sendOrThrow).not.toHaveBeenCalled()
++    expect(plugin.deliverySnapshot.status).toBe('stopped')
++  })
++
+   it('does not forward likes by default', async () => {
