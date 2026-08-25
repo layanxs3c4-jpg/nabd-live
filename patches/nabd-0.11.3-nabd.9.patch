@@ -1,0 +1,44 @@
+diff --git a/NABD-START-HERE-AR.md b/NABD-START-HERE-AR.md
+index 4f02a04..0ba6231 100644
+--- a/NABD-START-HERE-AR.md
++++ b/NABD-START-HERE-AR.md
+@@ -34,3 +34,3 @@
+ 5. بعد نجاح البناء، نزّل الملف **NABD-Live-Windows-x64** من قسم Artifacts.
+-6. فك الضغط، ثم شغّل ملف `NABD-Live-0.11.3-nabd.8-windows-x64-setup.exe`.
++6. فك الضغط، ثم شغّل ملف `NABD-Live-0.11.3-nabd.9-windows-x64-setup.exe`.
+ 
+diff --git a/apps/stage-tamagotchi/electron-builder.config.ts b/apps/stage-tamagotchi/electron-builder.config.ts
+index 8444f88..a6612c3 100644
+--- a/apps/stage-tamagotchi/electron-builder.config.ts
++++ b/apps/stage-tamagotchi/electron-builder.config.ts
+@@ -96,2 +96,3 @@ export default {
+   asar: true,
++  compression: 'store',
+   asarUnpack: [
+diff --git a/apps/stage-tamagotchi/package.json b/apps/stage-tamagotchi/package.json
+index d1fd351..4b029ca 100644
+--- a/apps/stage-tamagotchi/package.json
++++ b/apps/stage-tamagotchi/package.json
+@@ -3,3 +3,3 @@
+   "type": "module",
+-  "version": "0.11.3-nabd.8",
++  "version": "0.11.3-nabd.9",
+   "private": true,
+diff --git a/apps/stage-tamagotchi/src/renderer/pages/settings/tikfinity/index.vue b/apps/stage-tamagotchi/src/renderer/pages/settings/tikfinity/index.vue
+index 831f2f5..a87a24e 100644
+--- a/apps/stage-tamagotchi/src/renderer/pages/settings/tikfinity/index.vue
++++ b/apps/stage-tamagotchi/src/renderer/pages/settings/tikfinity/index.vue
+@@ -277,3 +277,3 @@ onMounted(() => {
+         <p class="nabd-eyebrow">
+-          NABD Live 0.11.3-nabd.8
++          NABD Live 0.11.3-nabd.9
+         </p>
+diff --git a/plugins/airi-plugin-tikfinity/package.json b/plugins/airi-plugin-tikfinity/package.json
+index c67905a..943461d 100644
+--- a/plugins/airi-plugin-tikfinity/package.json
++++ b/plugins/airi-plugin-tikfinity/package.json
+@@ -3,3 +3,3 @@
+   "type": "module",
+-  "version": "0.11.3-nabd.8",
++  "version": "0.11.3-nabd.9",
+   "private": true,
